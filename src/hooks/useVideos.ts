@@ -22,15 +22,15 @@ interface VideoFeedResponse {
 export function useVideos(limit = 50, offset = 0) {
   const toast = useToastContext()
 
-  return useQuery<VideoFeedResponse, Error>(
-    ['videos', limit, offset],
-    async () => {
+  return useQuery({
+    queryKey: ['videos', limit, offset],
+    queryFn: async (): Promise<VideoFeedResponse> => {
       try {
         const response = await apiService.getVideos(limit, offset)
-        return response
+        return response as VideoFeedResponse
       } catch (error) {
         const apiError = handleAPIError(error)
-        
+
         // Show user-friendly error message
         toast.error(
           'Failed to load videos',
@@ -42,28 +42,26 @@ export function useVideos(limit = 50, offset = 0) {
             }
           }
         )
-        
+
         throw apiError
       }
     },
-    {
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      gcTime: 10 * 60 * 1000, // 10 minutes
-      refetchOnWindowFocus: false,
-      retry: (failureCount, error) => {
-        const apiError = handleAPIError(error)
-        
-        // Don't retry on client errors
-        if (apiError.status >= 400 && apiError.status < 500) {
-          return false
-        }
-        
-        // Retry up to 2 times for server errors
-        return failureCount < 2
-      },
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    }
-  )
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: false,
+    retry: (failureCount: number, error: Error) => {
+      const apiError = handleAPIError(error)
+
+      // Don't retry on client errors
+      if (apiError.status >= 400 && apiError.status < 500) {
+        return false
+      }
+
+      // Retry up to 2 times for server errors
+      return failureCount < 2
+    },
+    retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30000),
+  })
 }
 
 export function useDeleteVideo() {
@@ -76,81 +74,79 @@ export function useDeleteVideo() {
         await apiService.deleteVideo(videoId)
       } catch (error) {
         const apiError = handleAPIError(error)
-        
+
         toast.error(
           'Failed to remove video',
           getErrorMessage(apiError)
         )
-        
+
         throw apiError
       }
     },
-      onMutate: async (videoId) => {
-        // Cancel any outgoing refetches
-        await queryClient.cancelQueries(['videos'])
+    onMutate: async (videoId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['videos'] })
 
-        // Snapshot the previous value
-        const previousVideos = queryClient.getQueriesData(['videos'])
+      // Snapshot the previous value
+      const previousVideos = queryClient.getQueriesData(['videos'])
 
-        // Optimistically update to remove the video
-        queryClient.setQueriesData(['videos'], (old: any) => {
-          if (!old) return old
-          
-          return {
-            ...old,
-            videos: old.videos.filter((video: Video) => video.videoId !== videoId),
-            total: old.total - 1
-          }
-        })
+      // Optimistically update to remove the video
+      queryClient.setQueriesData({ queryKey: ['videos'] }, (old: any) => {
+        if (!old) return old
 
-        // Return a context object with the snapshotted value
-        return { previousVideos }
-      },
-      onError: (err, videoId, context) => {
-        // If the mutation fails, use the context returned from onMutate to roll back
-        if (context?.previousVideos) {
-          context.previousVideos.forEach(([queryKey, data]) => {
-            queryClient.setQueryData(queryKey, data)
-          })
+        return {
+          ...old,
+          videos: old.videos.filter((video: Video) => video.videoId !== videoId),
+          total: old.total - 1
         }
-      },
-      onSuccess: () => {
-        toast.success('Video removed from feed')
-      },
-      onSettled: () => {
-        // Always refetch after error or success
-        queryClient.invalidateQueries({ queryKey: ['videos'] })
-      },
-    })
+      })
+
+      // Return a context object with the snapshotted value
+      return { previousVideos }
+    },
+    onError: (err, videoId, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      if (context?.previousVideos) {
+        context.previousVideos.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data)
+        })
+      }
+    },
+    onSuccess: () => {
+      toast.success('Video removed from feed')
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
+    },
+  })
 }
 
 export function useInfiniteVideos(limit = 20) {
   const toast = useToastContext()
 
-  return useQuery<Video[], Error>(
-    ['videos', 'infinite'],
-    async () => {
+  return useQuery({
+    queryKey: ['videos', 'infinite'],
+    queryFn: async (): Promise<Video[]> => {
       try {
         const response = await apiService.getVideos(limit, 0)
-        return response.videos
+        return (response as VideoFeedResponse).videos
       } catch (error) {
         const apiError = handleAPIError(error)
-        
+
         toast.error(
           'Failed to load videos',
           getErrorMessage(apiError)
         )
-        
+
         throw apiError
       }
     },
-    {
-      staleTime: 5 * 60 * 1000,
-      gcTime: 10 * 60 * 1000,
-      refetchOnWindowFocus: false,
-      retry: 2,
-    }
-  )
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: 2,
+  })
 }
 
 // Hook for managing video feed state with enhanced error handling
@@ -182,7 +178,7 @@ export function useVideoFeed() {
   // Enhanced error handling
   const getErrorState = () => {
     if (!isError || !error) return null
-    
+
     const apiError = handleAPIError(error)
     return {
       message: getErrorMessage(apiError),

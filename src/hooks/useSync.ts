@@ -16,12 +16,12 @@ export function useSync() {
   const toast = useToastContext()
 
   const syncMutation = useMutation({
-    mutationFn: async (userId: string | undefined) => {
+    mutationFn: async (userId: string | undefined): Promise<SyncResult> => {
       setSyncStatus('syncing')
       
       try {
         const response = await apiService.syncVideos(userId)
-        return response
+        return response as SyncResult
       } catch (error) {
         const apiError = handleAPIError(error)
         
@@ -71,7 +71,7 @@ export function useSync() {
         // Reset status after 5 seconds
         setTimeout(() => setSyncStatus('idle'), 5000)
       },
-      retry: (failureCount, error) => {
+      retry: (failureCount: number, error: Error) => {
         const apiError = handleAPIError(error)
         
         // Don't retry on quota errors or client errors
