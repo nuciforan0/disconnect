@@ -14,8 +14,33 @@ interface Video {
   created_at: string;
 }
 
-// Global storage that persists across API calls during the same deployment
-let videoStorage: Video[] = []
+// Import shared storage
+import fs from 'fs'
+
+// Use file-based storage for persistence between function calls
+const STORAGE_FILE = '/tmp/video_storage.json'
+
+function loadStorage(): Video[] {
+  try {
+    if (fs.existsSync(STORAGE_FILE)) {
+      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
+      return JSON.parse(data)
+    }
+  } catch (error) {
+    console.error('Error loading storage:', error)
+  }
+  return []
+}
+
+function saveStorage(videos: Video[]) {
+  try {
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(videos, null, 2))
+  } catch (error) {
+    console.error('Error saving storage:', error)
+  }
+}
+
+let videoStorage: Video[] = loadStorage()
 
 const storage = {
   addVideos: (videos: Video[]): void => {
@@ -25,24 +50,46 @@ const storage = {
       )
       if (!exists) {
         videoStorage.push(video)
+        console.log(`Added video: ${video.title} from ${video.channel_name}`)
       }
     })
+    saveStorage(videoStorage)
+    console.log(`Storage now contains ${videoStorage.length} total videos`)
   }
 }
 
-async function fetchYouTubeSubscriptions(accessToken: string) {
-  const response = await fetch('https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=50', {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Accept': 'application/json'
+async function fetchAllYouTubeSubscriptions(accessToken: string) {
+  let allChannels: any[] = []
+  let nextPageToken = ''
+  
+  do {
+    const url = `https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=50${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`YouTube API error: ${response.status}`)
     }
-  })
 
-  if (!response.ok) {
-    throw new Error(`YouTube API error: ${response.status}`)
-  }
-
-  return response.json()
+    const data = await response.json()
+    allChannels.push(...(data.items || []))
+    nextPageToken = data.nextPageToken || ''
+    
+    console.log(`Fetched ${data.items?.length || 0} subscriptions, total so far: ${allChannels.length}`)
+    
+    // Add delay between pagination requests
+    if (nextPageToken) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+  } while (nextPageToken)
+  
+  return { items: allChannels }
 }
 
 async function fetchChannelVideos(channelId: string, accessToken: string, publishedAfter: string) {
@@ -147,9 +194,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     console.log(`Looking for videos published after: ${publishedAfter}`)
     
-    // Get user's subscriptions
-    console.log(`Fetching subscriptions with publishedAfter: ${publishedAfter}`)
-    const subscriptionsData = await fetchYouTubeSubscriptions(accessToken)
+    // Get user's subscriptions (all pages)
+    console.log(`Fetching ALL subscriptions with publishedAfter: ${publishedAfter}`)
+    const subscriptionsData = await fetchAllYouTubeSubscriptions(accessToken)
     const channels = subscriptionsData.items || []
     
     console.log(`Found ${channels.length} total subscribed channels`)

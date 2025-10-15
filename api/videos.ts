@@ -14,34 +14,61 @@ interface Video {
   created_at: string;
 }
 
-// Global storage that persists across API calls during the same deployment
-let videoStorage: Video[] = [
-  // Start with some sample videos so you can test the delete functionality
-  {
-    id: 'sample-1',
-    user_id: 'user1',
-    video_id: 'sample-vid-1',
-    channel_id: 'UC_sample_1',
-    channel_name: 'Tech Channel',
-    title: 'Sample Tech Video - You can delete this',
-    thumbnail_url: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
-    published_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    duration: '10:30',
-    created_at: new Date().toISOString()
-  },
-  {
-    id: 'sample-2',
-    user_id: 'user1',
-    video_id: 'sample-vid-2',
-    channel_id: 'UC_sample_2',
-    channel_name: 'Gaming Channel',
-    title: 'Sample Gaming Video - You can delete this too',
-    thumbnail_url: 'https://img.youtube.com/vi/jNQXAC9IVRw/maxresdefault.jpg',
-    published_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-    duration: '15:45',
-    created_at: new Date().toISOString()
+// Import shared storage
+import fs from 'fs'
+import path from 'path'
+
+// Use file-based storage for persistence between function calls
+const STORAGE_FILE = '/tmp/video_storage.json'
+
+function loadStorage(): Video[] {
+  try {
+    if (fs.existsSync(STORAGE_FILE)) {
+      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
+      return JSON.parse(data)
+    }
+  } catch (error) {
+    console.error('Error loading storage:', error)
   }
-]
+  
+  // Return sample videos if no storage exists
+  return [
+    {
+      id: 'sample-1',
+      user_id: 'user1',
+      video_id: 'sample-vid-1',
+      channel_id: 'UC_sample_1',
+      channel_name: 'Tech Channel',
+      title: 'Sample Tech Video - You can delete this',
+      thumbnail_url: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
+      published_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      duration: '10:30',
+      created_at: new Date().toISOString()
+    },
+    {
+      id: 'sample-2',
+      user_id: 'user1',
+      video_id: 'sample-vid-2',
+      channel_id: 'UC_sample_2',
+      channel_name: 'Gaming Channel',
+      title: 'Sample Gaming Video - You can delete this too',
+      thumbnail_url: 'https://img.youtube.com/vi/jNQXAC9IVRw/maxresdefault.jpg',
+      published_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+      duration: '15:45',
+      created_at: new Date().toISOString()
+    }
+  ]
+}
+
+function saveStorage(videos: Video[]) {
+  try {
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(videos, null, 2))
+  } catch (error) {
+    console.error('Error saving storage:', error)
+  }
+}
+
+let videoStorage: Video[] = loadStorage()
 
 const storage = {
   getVideos: (userId: string): Video[] => {
@@ -57,6 +84,7 @@ const storage = {
         videoStorage.push(video)
       }
     })
+    saveStorage(videoStorage)
   },
 
   deleteVideo: (userId: string, videoId: string): boolean => {
@@ -64,6 +92,7 @@ const storage = {
     videoStorage = videoStorage.filter(video => 
       !(video.user_id === userId && video.video_id === videoId)
     )
+    saveStorage(videoStorage)
     return videoStorage.length < initialLength
   }
 }
