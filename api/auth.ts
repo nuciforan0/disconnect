@@ -2,7 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node'
 
 const GOOGLE_CLIENT_ID = process.env.VITE_YOUTUBE_CLIENT_ID
 const GOOGLE_CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET
-const REDIRECT_URI = `${process.env.VITE_APP_URL}/api/auth/callback`
+const REDIRECT_URI = `${process.env.VITE_APP_URL}/api/auth`
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { method, query } = req
