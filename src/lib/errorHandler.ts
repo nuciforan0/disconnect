@@ -36,7 +36,7 @@ export function handleAPIError(error: any): APIError {
   }
 
   if (error.name === 'TypeError' && error.message.includes('fetch')) {
-    return new NetworkError('Network connection failed')
+    return new APIError('Network connection failed', 0, 'NETWORK_ERROR')
   }
 
   if (error.status) {

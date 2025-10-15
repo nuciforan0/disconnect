@@ -61,7 +61,7 @@ class AuthService {
 
   async initiateGoogleAuth(): Promise<string> {
     const response = await apiService.initiateGoogleAuth()
-    return response.authUrl
+    return (response as { authUrl: string }).authUrl
   }
 
   async refreshAccessToken(): Promise<string | null> {

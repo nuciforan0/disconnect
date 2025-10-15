@@ -4,7 +4,6 @@ const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-key-for-developmen
 const ALGORITHM = 'aes-256-gcm'
 
 export function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16)
   const cipher = crypto.createCipher(ALGORITHM, ENCRYPTION_KEY)
   
   let encrypted = cipher.update(text, 'utf8', 'hex')
@@ -12,7 +11,7 @@ export function encrypt(text: string): string {
   
   const authTag = cipher.getAuthTag()
   
-  return iv.toString('hex') + ':' + authTag.toString('hex') + ':' + encrypted
+  return 'iv:' + authTag.toString('hex') + ':' + encrypted
 }
 
 export function decrypt(encryptedData: string): string {

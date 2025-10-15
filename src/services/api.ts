@@ -1,4 +1,4 @@
-import { handleAPIError, APIError, NetworkError } from '../lib/errorHandler'
+import { handleAPIError, APIError } from '../lib/errorHandler'
 
 const API_BASE_URL = '/api'
 

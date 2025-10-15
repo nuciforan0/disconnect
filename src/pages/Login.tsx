@@ -7,7 +7,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
-  const { setUser, setLoading: setAuthLoading } = useAuthStore()
+  const { setUser } = useAuthStore()
 
   useEffect(() => {
     // Check for OAuth callback in URL
