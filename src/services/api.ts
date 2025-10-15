@@ -116,7 +116,7 @@ class ApiService {
 
   async initiateGoogleAuth() {
     try {
-      return await this.request('/auth/google', {
+      return await this.request('/auth', {
         method: 'POST',
       }, {
         maxRetries: 1 // Don't retry auth requests
