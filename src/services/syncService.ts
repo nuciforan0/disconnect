@@ -137,7 +137,7 @@ export class SyncService {
       const allVideos = batchResult.results.flat()
       
       if (allVideos.length > 0) {
-        const insertedVideos = await databaseService.batchInsertVideosFiltered(userId, allVideos, 100)
+        const insertedVideos = await databaseService.batchInsertVideosFiltered(allVideos, 100)
         result.videosSynced = insertedVideos.length
       }
 

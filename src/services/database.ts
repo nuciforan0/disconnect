@@ -135,7 +135,7 @@ export class DatabaseService {
   }
 
   // Enhanced batch insert that avoids duplicates
-  async batchInsertVideosFiltered(userId: string, videos: Omit<Video, 'id' | 'created_at'>[], batchSize = 100) {
+  async batchInsertVideosFiltered(videos: Omit<Video, 'id' | 'created_at'>[], batchSize = 100) {
     if (videos.length === 0) {
       return []
     }
