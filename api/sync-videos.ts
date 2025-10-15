@@ -46,21 +46,33 @@ async function fetchYouTubeSubscriptions(accessToken: string) {
 }
 
 async function fetchChannelVideos(channelId: string, accessToken: string, publishedAfter: string) {
-  const response = await fetch(
-    `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&publishedAfter=${publishedAfter}&maxResults=10`, 
-    {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/json'
-      }
+  // First try the search API
+  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&publishedAfter=${publishedAfter}&maxResults=10`
+  
+  console.log(`Calling YouTube API: ${searchUrl}`)
+  
+  const response = await fetch(searchUrl, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json'
     }
-  )
+  })
 
   if (!response.ok) {
-    throw new Error(`YouTube API error: ${response.status}`)
+    const errorText = await response.text()
+    console.error(`YouTube API error ${response.status}:`, errorText)
+    throw new Error(`YouTube API error: ${response.status} - ${errorText}`)
   }
 
-  return response.json()
+  const data = await response.json()
+  console.log(`YouTube API response:`, {
+    kind: data.kind,
+    etag: data.etag,
+    pageInfo: data.pageInfo,
+    itemCount: data.items?.length || 0
+  })
+  
+  return data
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -94,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         video_id: `vid-${Date.now()}-1`,
         channel_id: 'UC_sample_1',
         channel_name: 'Tech Channel',
-        title: 'Latest Tech News Update (Mock)',
+        title: 'Latest Tech News Update (Mock - No Auth)',
         thumbnail_url: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
         published_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
         duration: '10:30',
@@ -106,7 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         video_id: `vid-${Date.now()}-2`,
         channel_id: 'UC_sample_2',
         channel_name: 'Gaming Channel',
-        title: 'New Game Review (Mock)',
+        title: 'New Game Review (Mock - No Auth)',
         thumbnail_url: 'https://img.youtube.com/vi/jNQXAC9IVRw/maxresdefault.jpg',
         published_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
         duration: '15:45',
@@ -129,15 +141,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     console.log(`Starting YouTube subscription sync for user ${userId}`)
     
-    // Calculate exactly 24 hours ago
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
-    const publishedAfter = oneDayAgo.toISOString()
+    // Calculate 7 days ago for testing (you can change this back to 1 day later)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const publishedAfter = sevenDaysAgo.toISOString()
+    
+    console.log(`Looking for videos published after: ${publishedAfter}`)
     
     // Get user's subscriptions
+    console.log(`Fetching subscriptions with publishedAfter: ${publishedAfter}`)
     const subscriptionsData = await fetchYouTubeSubscriptions(accessToken)
     const channels = subscriptionsData.items || []
     
-    console.log(`Found ${channels.length} subscribed channels`)
+    console.log(`Found ${channels.length} total subscribed channels`)
+    console.log(`Processing first 10 channels:`, channels.slice(0, 10).map(c => c.snippet.title))
     
     let allVideos: Video[] = []
     let channelsSynced = 0
@@ -149,8 +165,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const channelId = channel.snippet.resourceId.channelId
         const channelName = channel.snippet.title
         
+        console.log(`Fetching videos from ${channelName} (${channelId}) since ${publishedAfter}`)
+        
         const videosData = await fetchChannelVideos(channelId, accessToken, publishedAfter)
         const videos = videosData.items || []
+        
+        console.log(`Raw API response for ${channelName}:`, {
+          totalResults: videosData.pageInfo?.totalResults || 0,
+          resultsPerPage: videosData.pageInfo?.resultsPerPage || 0,
+          itemCount: videos.length,
+          firstVideoTitle: videos[0]?.snippet?.title || 'No videos'
+        })
         
         // Convert to our format
         const formattedVideos = videos.map((video: any) => ({
@@ -175,7 +200,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await new Promise(resolve => setTimeout(resolve, 100))
         
       } catch (error) {
-        const errorMsg = `Failed to sync channel: ${error instanceof Error ? error.message : 'Unknown error'}`
+        const errorMsg = `Failed to sync channel ${channel.snippet.title}: ${error instanceof Error ? error.message : 'Unknown error'}`
         errors.push(errorMsg)
         console.error(errorMsg)
       }
