@@ -81,12 +81,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      const redirectUrl = `${process.env.VITE_APP_URL}/?auth=success&data=${encodeURIComponent(JSON.stringify(authData))}`
+      const redirectUrl = `${process.env.VITE_APP_URL}/login?auth=success&data=${encodeURIComponent(JSON.stringify(authData))}`
       console.log('Redirecting to:', redirectUrl)
       res.redirect(redirectUrl)
     } catch (error) {
       console.error('OAuth callback error:', error)
-      res.redirect(`${process.env.VITE_APP_URL}/?auth=error&message=${encodeURIComponent(error.message)}`)
+      res.redirect(`${process.env.VITE_APP_URL}/login?auth=error&message=${encodeURIComponent(error.message)}`)
     }
   } else if (method === 'GET' && !query.code) {
     // Simple test endpoint
