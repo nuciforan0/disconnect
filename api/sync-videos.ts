@@ -14,33 +14,16 @@ interface Video {
   created_at: string;
 }
 
-// Import shared storage
-import fs from 'fs'
+// Use global storage to share between API functions
+let videoStorage: Video[] = []
 
-// Use file-based storage for persistence between function calls
-const STORAGE_FILE = '/tmp/video_storage.json'
-
-function loadStorage(): Video[] {
-  try {
-    if (fs.existsSync(STORAGE_FILE)) {
-      const data = fs.readFileSync(STORAGE_FILE, 'utf8')
-      return JSON.parse(data)
-    }
-  } catch (error) {
-    console.error('Error loading storage:', error)
+// Access global storage
+if (typeof global !== 'undefined') {
+  if (!global.videoStorage) {
+    global.videoStorage = []
   }
-  return []
+  videoStorage = global.videoStorage
 }
-
-function saveStorage(videos: Video[]) {
-  try {
-    fs.writeFileSync(STORAGE_FILE, JSON.stringify(videos, null, 2))
-  } catch (error) {
-    console.error('Error saving storage:', error)
-  }
-}
-
-let videoStorage: Video[] = loadStorage()
 
 const storage = {
   addVideos: (videos: Video[]): void => {
@@ -53,7 +36,12 @@ const storage = {
         console.log(`Added video: ${video.title} from ${video.channel_name}`)
       }
     })
-    saveStorage(videoStorage)
+    
+    // Update global storage
+    if (typeof global !== 'undefined') {
+      global.videoStorage = videoStorage
+    }
+    
     console.log(`Storage now contains ${videoStorage.length} total videos`)
   }
 }

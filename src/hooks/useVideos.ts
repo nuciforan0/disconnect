@@ -145,13 +145,16 @@ export function useSyncVideos() {
     onSuccess: (result: any) => {
       console.log('Sync result:', result)
       console.log('Debug details:', result.debug)
+      console.log('Errors:', result.errors)
       
       const debugInfo = result.debug ? 
         `\nDebug: ${result.debug.totalSubscriptions} total subs, processed: ${result.debug.processedChannels?.slice(0, 3).join(', ')}${result.debug.processedChannels?.length > 3 ? '...' : ''}` : ''
       
+      const errorInfo = result.errors?.length > 0 ? `\nErrors: ${result.errors.length} failed` : ''
+      
       toast.success(
         'Videos synced successfully',
-        `Found ${result.videosSynced} new videos from ${result.channelsSynced} channels${debugInfo}`
+        `Found ${result.videosSynced} new videos from ${result.channelsSynced} channels${debugInfo}${errorInfo}`
       )
       
       // Refresh the video list
