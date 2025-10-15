@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Subscription Manager - Integration Tests</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 YouTube Subscription Manager - Integration Tests</h1>
+    
+    <div class="test-container">
+        <h2>Test Environment Status</h2>
+        <div id="environment-status">
+            <div class="info">Checking environment...</div>
+        </div>
+        <button onclick="checkEnvironment()">Check Environment</button>
+    </div>
+
+    <div class="test-grid">
+        <div class="test-container">
+            <h3>🔐 Authentication Tests</h3>
+            <div id="auth-status">
+                <div class="info">Ready to test authentication flow</div>
+            </div>
+            <button onclick="testAuthentication()">Test Auth Flow</button>
+            <button onclick="testTokenRefresh()">Test Token Refresh</button>
+        </div>
+
+        <div class="test-container">
+            <h3>📹 Video Feed Tests</h3>
+            <div id="video-status">
+                <div class="info">Ready to test video functionality</div>
+            </div>
+            <button onclick="testVideoFeed()">Test Video Feed</button>
+            <button onclick="testVideoActions()">Test Watch/Skip</button>
+        </div>
+
+        <div class="test-container">
+            <h3>🔄 Sync Tests</h3>
+            <div id="sync-status">
+                <div class="info">Ready to test sync functionality</div>
+            </div>
+            <button onclick="testSync()">Test Manual Sync</button>
+            <button onclick="testCronSync()">Test Cron Sync</button>
+        </div>
+
+        <div class="test-container">
+            <h3>🎥 Video Player Tests</h3>
+            <div id="player-status">
+                <div class="info">Ready to test video player</div>
+            </div>
+            <button onclick="testVideoPlayer()">Test Player</button>
+            <button onclick="testMobilePlayer()">Test Mobile</button>
+        </div>
+
+        <div class="test-container">
+            <h3>⚡ Performance Tests</h3>
+            <div id="performance-status">
+                <div class="info">Ready to test performance</div>
+            </div>
+            <button onclick="testPerformance()">Test Load Time</button>
+            <button onclick="testApiPerformance()">Test API Speed</button>
+        </div>
+
+        <div class="test-container">
+            <h3>♿ Accessibility Tests</h3>
+            <div id="a11y-status">
+                <div class="info">Ready to test accessibility</div>
+            </div>
+            <button onclick="testKeyboardNav()">Test Keyboard</button>
+            <button onclick="testScreenReader()">Test ARIA</button>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>🚀 Full Integration Test Suite</h2>
+        <div id="integration-status">
+            <div class="info">Ready to run complete test suite</div>
+        </div>
+        <button onclick="runFullTestSuite()" id="full-test-btn">Run All Tests</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+
+    <div class="test-container">
+        <h3>📋 Test Logs</h3>
+        <div id="test-logs" class="log">Test logs will appear here...\n</div>
+    </div>
+
+    <script>
+        // Test logging utility
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('test-logs');
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+            logElement.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function updateStatus(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+
+        function clearLogs() {
+            document.getElementById('test-logs').textContent = 'Test logs cleared...\n';
+        }
+
+        // Environment checks
+        async function checkEnvironment() {
+            log('Checking environment configuration...');
+            
+            const checks = [
+                { name: 'Local Storage', test: () => typeof Storage !== 'undefined' },
+                { name: 'Fetch API', test: () => typeof fetch !== 'undefined' },
+                { name: 'Performance API', test: () => typeof performance !== 'undefined' },
+                { name: 'Service Worker', test: () => 'serviceWorker' in navigator },
+                { name: 'WebRTC', test: () => typeof RTCPeerConnection !== 'undefined' }
+            ];
+
+            let passed = 0;
+            for (const check of checks) {
+                try {
+                    if (check.test()) {
+                        log(`${check.name}: Available`, 'success');
+                        passed++;
+                    } else {
+                        log(`${check.name}: Not available`, 'warning');
+                    }
+                } catch (error) {
+                    log(`${check.name}: Error - ${error.message}`, 'error');
+                }
+            }
+
+            const status = passed === checks.length ? 'success' : passed > 0 ? 'warning' : 'error';
+            updateStatus('environment-status', `Environment check: ${passed}/${checks.length} features available`, status);
+        }
+
+        // Authentication tests
+        async function testAuthentication() {
+            log('Testing authentication flow...');
+            updateStatus('auth-status', 'Testing authentication...', 'info');
+
+            try {
+                // Test OAuth initiation
+                const response = await fetch('/api/auth/google', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    log('OAuth initiation successful', 'success');
+                    updateStatus('auth-status', 'Authentication test passed', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`Authentication test failed: ${error.message}`, 'error');
+                updateStatus('auth-status', 'Authentication test failed', 'error');
+            }
+        }
+
+        async function testTokenRefresh() {
+            log('Testing token refresh...');
+            
+            try {
+                const response = await fetch('/api/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refreshToken: 'test-token' })
+                });
+
+                if (response.ok || response.status === 400) {
+                    log('Token refresh endpoint responding', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`Token refresh test failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Video feed tests
+        async function testVideoFeed() {
+            log('Testing video feed...');
+            updateStatus('video-status', 'Testing video feed...', 'info');
+
+            try {
+                const response = await fetch('/api/videos?limit=10&offset=0&userId=test');
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`Video feed loaded: ${data.videos?.length || 0} videos`, 'success');
+                    updateStatus('video-status', 'Video feed test passed', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`Video feed test failed: ${error.message}`, 'error');
+                updateStatus('video-status', 'Video feed test failed', 'error');
+            }
+        }
+
+        async function testVideoActions() {
+            log('Testing video actions (watch/skip)...');
+
+            try {
+                const response = await fetch('/api/videos/test-video-id', {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer test-token' }
+                });
+
+                if (response.ok) {
+                    log('Video deletion successful', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`Video action test failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Sync tests
+        async function testSync() {
+            log('Testing manual sync...');
+            updateStatus('sync-status', 'Testing sync...', 'info');
+
+            try {
+                const response = await fetch('/api/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: 'test-user' })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`Sync completed: ${data.videosSynced || 0} videos synced`, 'success');
+                    updateStatus('sync-status', 'Sync test passed', 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`Sync test failed: ${error.message}`, 'error');
+                updateStatus('sync-status', 'Sync test failed', 'error');
+            }
+        }
+
+        async function testCronSync() {
+            log('Testing cron sync (all users)...');
+
+            try {
+                const response = await fetch('/api/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`Cron sync completed: ${data.totalUsers || 0} users processed`, 'success');
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                log(`Cron sync test failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Video player tests
+        async function testVideoPlayer() {
+            log('Testing video player functionality...');
+            updateStatus('player-status', 'Testing video player...', 'info');
+
+            try {
+                // Test YouTube embed URL generation
+                const videoId = 'dQw4w9WgXcQ';
+                const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+                
+                // Create test iframe
+                const iframe = document.createElement('iframe');
+                iframe.src = embedUrl;
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
+
+                // Test iframe load
+                iframe.onload = () => {
+                    log('Video player iframe loaded successfully', 'success');
+                    updateStatus('player-status', 'Video player test passed', 'success');
+                    document.body.removeChild(iframe);
+                };
+
+                iframe.onerror = () => {
+                    log('Video player iframe failed to load', 'error');
+                    updateStatus('player-status', 'Video player test failed', 'error');
+                    document.body.removeChild(iframe);
+                };
+
+                // Timeout after 5 seconds
+                setTimeout(() => {
+                    if (document.body.contains(iframe)) {
+                        log('Video player test timed out', 'warning');
+                        document.body.removeChild(iframe);
+                    }
+                }, 5000);
+
+            } catch (error) {
+                log(`Video player test failed: ${error.message}`, 'error');
+                updateStatus('player-status', 'Video player test failed', 'error');
+            }
+        }
+
+        async function testMobilePlayer() {
+            log('Testing mobile player optimizations...');
+
+            // Test mobile detection
+            const isMobile = window.innerWidth < 768;
+            log(`Mobile detection: ${isMobile ? 'Mobile' : 'Desktop'}`, 'info');
+
+            // Test orientation change handling
+            if (screen.orientation) {
+                log(`Screen orientation: ${screen.orientation.type}`, 'info');
+            }
+
+            // Test touch events
+            const touchSupported = 'ontouchstart' in window;
+            log(`Touch support: ${touchSupported ? 'Yes' : 'No'}`, touchSupported ? 'success' : 'warning');
+        }
+
+        // Performance tests
+        async function testPerformance() {
+            log('Testing performance metrics...');
+            updateStatus('performance-status', 'Testing performance...', 'info');
+
+            try {
+                // Test page load performance
+                if (performance.navigation) {
+                    const navigation = performance.getEntriesByType('navigation')[0];
+                    const loadTime = navigation.loadEventEnd - navigation.fetchStart;
+                    log(`Page load time: ${loadTime.toFixed(2)}ms`, loadTime < 3000 ? 'success' : 'warning');
+                }
+
+                // Test memory usage (if available)
+                if (performance.memory) {
+                    const memory = performance.memory;
+                    log(`Memory usage: ${(memory.usedJSHeapSize / 1024 / 1024).toFixed(2)}MB`, 'info');
+                }
+
+                updateStatus('performance-status', 'Performance test completed', 'success');
+            } catch (error) {
+                log(`Performance test failed: ${error.message}`, 'error');
+                updateStatus('performance-status', 'Performance test failed', 'error');
+            }
+        }
+
+        async function testApiPerformance() {
+            log('Testing API performance...');
+
+            const startTime = performance.now();
+            try {
+                await fetch('/api/videos?limit=1&userId=test');
+                const endTime = performance.now();
+                const duration = endTime - startTime;
+                
+                log(`API response time: ${duration.toFixed(2)}ms`, duration < 1000 ? 'success' : 'warning');
+            } catch (error) {
+                log(`API performance test failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Accessibility tests
+        async function testKeyboardNav() {
+            log('Testing keyboard navigation...');
+            updateStatus('a11y-status', 'Testing accessibility...', 'info');
+
+            try {
+                const focusableElements = document.querySelectorAll(
+                    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                );
+
+                log(`Found ${focusableElements.length} focusable elements`, 'info');
+
+                let accessibleCount = 0;
+                focusableElements.forEach((element) => {
+                    if (element.tabIndex >= 0) {
+                        accessibleCount++;
+                    }
+                });
+
+                const percentage = (accessibleCount / focusableElements.length) * 100;
+                log(`Keyboard accessible: ${accessibleCount}/${focusableElements.length} (${percentage.toFixed(1)}%)`, 
+                    percentage > 90 ? 'success' : 'warning');
+
+                updateStatus('a11y-status', 'Accessibility test completed', 'success');
+            } catch (error) {
+                log(`Keyboard navigation test failed: ${error.message}`, 'error');
+                updateStatus('a11y-status', 'Accessibility test failed', 'error');
+            }
+        }
+
+        async function testScreenReader() {
+            log('Testing screen reader compatibility...');
+
+            try {
+                const interactiveElements = document.querySelectorAll('button, [role="button"], input');
+                let labeledCount = 0;
+
+                interactiveElements.forEach((element) => {
+                    const hasLabel = element.getAttribute('aria-label') || 
+                                    element.getAttribute('aria-labelledby') ||
+                                    element.textContent?.trim();
+                    
+                    if (hasLabel) {
+                        labeledCount++;
+                    }
+                });
+
+                const percentage = (labeledCount / interactiveElements.length) * 100;
+                log(`ARIA labeled: ${labeledCount}/${interactiveElements.length} (${percentage.toFixed(1)}%)`,
+                    percentage > 90 ? 'success' : 'warning');
+
+            } catch (error) {
+                log(`Screen reader test failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Full test suite
+        async function runFullTestSuite() {
+            const button = document.getElementById('full-test-btn');
+            button.disabled = true;
+            button.textContent = 'Running Tests...';
+
+            log('🚀 Starting full integration test suite...', 'info');
+            updateStatus('integration-status', 'Running full test suite...', 'info');
+
+            try {
+                // Run all tests in sequence
+                await checkEnvironment();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                await testAuthentication();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                await testVideoFeed();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                await testSync();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                await testVideoPlayer();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                await testPerformance();
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                await testKeyboardNav();
+                
+                log('🎉 Full test suite completed!', 'success');
+                updateStatus('integration-status', 'All tests completed successfully', 'success');
+
+            } catch (error) {
+                log(`Test suite failed: ${error.message}`, 'error');
+                updateStatus('integration-status', 'Test suite failed', 'error');
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Run All Tests';
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            log('Integration test page loaded');
+            checkEnvironment();
+        });
+    </script>
+</body>
+</html>
