@@ -116,11 +116,11 @@ class ApiService {
     }
   }
 
-  async syncVideos(userId: string) {
+  async syncVideos(userId: string, accessToken?: string) {
     try {
       return await this.request('/sync-videos', {
         method: 'POST',
-        body: JSON.stringify({ userId })
+        body: JSON.stringify({ userId, accessToken })
       }, {
         maxRetries: 1 // Don't retry sync requests
       })

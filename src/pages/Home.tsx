@@ -4,6 +4,7 @@ import SyncStatus from '../components/SyncStatus'
 import QuotaStatus from '../components/QuotaStatus'
 import { useAuth } from '../hooks/useAuth'
 import { useVideoFeed, useSyncVideos } from '../hooks/useVideos'
+import { authService } from '../services/auth'
 
 export default function Home() {
   const { user } = useAuth()
@@ -16,9 +17,15 @@ export default function Home() {
   } = useVideoFeed()
   const syncVideosMutation = useSyncVideos()
 
-  const handleSyncVideos = () => {
+  const handleSyncVideos = async () => {
     if (user?.id) {
-      syncVideosMutation.mutate(user.id)
+      // Try to get a valid access token
+      const accessToken = await authService.getValidAccessToken()
+      
+      syncVideosMutation.mutate({ 
+        userId: user.id, 
+        accessToken: accessToken || undefined 
+      })
     }
   }
 

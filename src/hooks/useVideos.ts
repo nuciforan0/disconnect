@@ -127,9 +127,9 @@ export function useSyncVideos() {
   const toast = useToastContext()
 
   return useMutation({
-    mutationFn: async (userId: string) => {
+    mutationFn: async ({ userId, accessToken }: { userId: string; accessToken?: string }) => {
       try {
-        const result = await apiService.syncVideos(userId)
+        const result = await apiService.syncVideos(userId, accessToken)
         return result
       } catch (error) {
         const apiError = handleAPIError(error)
