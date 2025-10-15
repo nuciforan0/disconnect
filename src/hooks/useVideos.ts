@@ -121,8 +121,7 @@ export function useDeleteVideo() {
         // Always refetch after error or success
         queryClient.invalidateQueries({ queryKey: ['videos'] })
       },
-    }
-  })
+    })
 }
 
 export function useInfiniteVideos(limit = 20) {
