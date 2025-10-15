@@ -7,20 +7,30 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
-  const { setUser } = useAuthStore()
+  const { setUser, isAuthenticated } = useAuthStore()
 
   useEffect(() => {
+    // If already authenticated, redirect to home
+    if (isAuthenticated) {
+      navigate('/')
+      return
+    }
+
     // Check for OAuth callback in URL
     const urlParams = new URLSearchParams(window.location.search)
     const user = authService.handleAuthCallback(urlParams)
     
     if (user) {
       setUser(user)
+      // Clean up URL and redirect
+      window.history.replaceState({}, document.title, window.location.pathname)
       navigate('/')
     } else if (urlParams.get('auth') === 'error') {
       setError('Authentication failed. Please try again.')
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname)
     }
-  }, [navigate, setUser])
+  }, [navigate, setUser, isAuthenticated])
 
   const handleGoogleLogin = async () => {
     setLoading(true)

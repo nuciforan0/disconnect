@@ -61,12 +61,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const userInfo = await userResponse.json()
 
       // Store user and tokens in database (will implement database operations)
-      // For now, redirect with success
-      res.redirect(`${process.env.VITE_APP_URL}/?auth=success&user=${encodeURIComponent(JSON.stringify({
-        id: userInfo.id,
-        email: userInfo.email,
-        name: userInfo.name
-      }))}`)
+      // For now, redirect with success and include tokens
+      const authData = {
+        user: {
+          id: userInfo.id,
+          email: userInfo.email,
+          name: userInfo.name
+        },
+        tokens: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+          expiresIn: tokens.expires_in
+        }
+      }
+
+      res.redirect(`${process.env.VITE_APP_URL}/?auth=success&data=${encodeURIComponent(JSON.stringify(authData))}`)
     } catch (error) {
       console.error('OAuth callback error:', error)
       res.redirect(`${process.env.VITE_APP_URL}/?auth=error`)

@@ -123,12 +123,23 @@ class AuthService {
     const authStatus = urlParams.get('auth')
     
     if (authStatus === 'success') {
-      const userParam = urlParams.get('user')
-      if (userParam) {
+      const dataParam = urlParams.get('data')
+      if (dataParam) {
         try {
-          return JSON.parse(decodeURIComponent(userParam))
+          const authData = JSON.parse(decodeURIComponent(dataParam))
+          
+          // Save tokens
+          if (authData.tokens) {
+            this.saveTokensToStorage(authData.tokens)
+          }
+          
+          // Save user info to localStorage
+          if (authData.user) {
+            localStorage.setItem('user_info', JSON.stringify(authData.user))
+            return authData.user
+          }
         } catch (error) {
-          console.error('Failed to parse user data:', error)
+          console.error('Failed to parse auth data:', error)
         }
       }
     }

@@ -14,14 +14,25 @@ export function useAuth() {
         const isAuth = authService.isAuthenticated()
         
         if (isAuth) {
-          // User has valid tokens, but we might need to get user info from storage or API
+          // User has valid tokens, get user info from storage
           const storedUser = localStorage.getItem('user_info')
           if (storedUser) {
             setUser(JSON.parse(storedUser))
+          } else {
+            // If no user info but tokens exist, clear tokens (inconsistent state)
+            authService.logout()
           }
+        } else {
+          // No valid tokens, make sure user info is also cleared
+          localStorage.removeItem('user_info')
+          setUser(null)
         }
       } catch (error) {
         console.error('Auth check error:', error)
+        // On error, clear everything
+        authService.logout()
+        localStorage.removeItem('user_info')
+        setUser(null)
       } finally {
         setLoading(false)
       }
