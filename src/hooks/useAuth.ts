@@ -1,12 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { authService } from '../services/auth'
 import { useAuthStore } from '../store/authStore'
-
-interface User {
-  id: string;
-  email: string;
-  name?: string;
-}
 
 export function useAuth() {
   const { user, isAuthenticated, loading, setUser, setLoading, logout: storeLogout } = useAuthStore()

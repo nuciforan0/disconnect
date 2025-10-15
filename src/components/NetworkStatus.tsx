@@ -3,7 +3,7 @@ import { useToastContext } from '../contexts/ToastContext'
 import { useEffect, useRef } from 'react'
 
 export default function NetworkStatus() {
-  const { isOnline, isSlowConnection, effectiveType } = useNetworkStatus()
+  const { isOnline, isSlowConnection } = useNetworkStatus()
   const toast = useToastContext()
   const wasOfflineRef = useRef(false)
 
