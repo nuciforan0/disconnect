@@ -214,7 +214,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       videosSynced: allVideos.length,
       errors,
       quotaUsed: channelsSynced * 2, // Rough estimate
-      executionTime: Date.now()
+      executionTime: Date.now(),
+      debug: {
+        totalSubscriptions: channels.length,
+        processedChannels: channels.slice(0, 10).map(c => c.snippet.title),
+        publishedAfter,
+        hasAccessToken: !!accessToken
+      }
     }
     
     console.log(`YouTube sync completed for user ${userId}:`, result)

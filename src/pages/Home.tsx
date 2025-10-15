@@ -22,6 +22,13 @@ export default function Home() {
       // Try to get a valid access token
       const accessToken = await authService.getValidAccessToken()
       
+      console.log('Sync Debug Info:', {
+        userId: user.id,
+        hasAccessToken: !!accessToken,
+        accessTokenLength: accessToken?.length || 0,
+        isAuthenticated: authService.isAuthenticated()
+      })
+      
       syncVideosMutation.mutate({ 
         userId: user.id, 
         accessToken: accessToken || undefined 
