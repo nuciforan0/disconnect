@@ -47,12 +47,25 @@ export default function Login() {
     setError(null)
     
     try {
+      console.log('Initiating Google auth...')
       const authUrl = await authService.initiateGoogleAuth()
+      console.log('Auth URL received:', authUrl)
       window.location.href = authUrl
     } catch (error) {
       console.error('Login error:', error)
       setError('Failed to initiate login. Please try again.')
       setLoading(false)
+    }
+  }
+
+  // Test API endpoint
+  const testAPI = async () => {
+    try {
+      const response = await fetch('/api/test')
+      const data = await response.json()
+      console.log('Test API response:', data)
+    } catch (error) {
+      console.error('Test API error:', error)
     }
   }
 
@@ -91,6 +104,13 @@ export default function Login() {
               </svg>
             )}
             {loading ? 'Connecting...' : 'Continue with Google'}
+          </button>
+          
+          <button
+            onClick={testAPI}
+            className="w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          >
+            Test API
           </button>
         </div>
       </div>
