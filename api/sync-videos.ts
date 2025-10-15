@@ -153,14 +153,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const channels = subscriptionsData.items || []
     
     console.log(`Found ${channels.length} total subscribed channels`)
-    console.log(`Processing first 10 channels:`, channels.slice(0, 10).map(c => c.snippet.title))
+    console.log(`Processing ALL ${channels.length} channels:`, channels.map(c => c.snippet.title))
     
     let allVideos: Video[] = []
     let channelsSynced = 0
     const errors: string[] = []
     
-    // Fetch videos from each subscribed channel (limit to first 10 to avoid quota issues)
-    for (const channel of channels.slice(0, 10)) {
+    // Fetch videos from ALL subscribed channels
+    for (const channel of channels) {
       try {
         const channelId = channel.snippet.resourceId.channelId
         const channelName = channel.snippet.title
@@ -196,8 +196,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         console.log(`Synced ${formattedVideos.length} videos from ${channelName}`)
         
-        // Add delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100))
+        // Add delay to avoid rate limiting (longer delay for more channels)
+        await new Promise(resolve => setTimeout(resolve, 200))
         
       } catch (error) {
         const errorMsg = `Failed to sync channel ${channel.snippet.title}: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -217,7 +217,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       executionTime: Date.now(),
       debug: {
         totalSubscriptions: channels.length,
-        processedChannels: channels.slice(0, 10).map(c => c.snippet.title),
+        processedChannels: channels.map(c => c.snippet.title),
         publishedAfter,
         hasAccessToken: !!accessToken
       }
