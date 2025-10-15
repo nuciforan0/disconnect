@@ -114,6 +114,20 @@ class ApiService {
     }
   }
 
+  async syncVideos(userId: string) {
+    try {
+      return await this.request('/sync-videos', {
+        method: 'POST',
+        body: JSON.stringify({ userId })
+      }, {
+        maxRetries: 1 // Don't retry sync requests
+      })
+    } catch (error) {
+      console.error('Failed to sync videos:', error)
+      throw error
+    }
+  }
+
   async initiateGoogleAuth() {
     try {
       return await this.request('/auth', {

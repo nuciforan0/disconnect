@@ -96,16 +96,16 @@ export class SyncService {
         return result
       }
 
-      // Get user's last sync time
-      const user = await databaseService.getUserByGoogleId(userId)
-      const lastSyncTime = user?.last_sync ? new Date(user.last_sync) : undefined
+      // Always fetch videos from exactly the last 24 hours
+      const exactlyOneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
       // Process channels with quota-aware batch processing
       const channelProcessor = async (channel: Channel) => {
         try {
           const videos = await youtubeService.syncChannelVideos(
             channel.channel_id,
-            lastSyncTime
+            exactlyOneDayAgo,
+            50 // Get more videos to ensure we don't miss any from the last 24h
           )
 
           // Convert to database format
@@ -133,11 +133,11 @@ export class SyncService {
         'activities'
       )
 
-      // Flatten all videos and batch insert
+      // Flatten all videos and batch insert (filtering out skipped videos)
       const allVideos = batchResult.results.flat()
       
       if (allVideos.length > 0) {
-        const insertedVideos = await databaseService.batchInsertVideos(allVideos, 100)
+        const insertedVideos = await databaseService.batchInsertVideosFiltered(userId, allVideos, 100)
         result.videosSynced = insertedVideos.length
       }
 

@@ -4,12 +4,25 @@ A modern web application for managing YouTube video consumption through a person
 
 ## Features
 
+### 📺 Smart Video Feed
+- Automatically fetches videos from your YouTube subscriptions from the last 24 hours
+- Clean, responsive interface optimized for mobile and desktop
+- Skip videos to permanently remove them from your feed
+
+### 🔄 Intelligent Sync System
+- Manual sync button to fetch latest videos from your subscriptions
+- Skipped videos are remembered and won't appear again
+- Efficient quota management to stay within YouTube API limits
+
+### 🎯 Video Management
+- **Watch**: Opens the video and removes it from your feed
+- **Skip**: Permanently removes the video from your feed without watching
+- Videos are filtered based on your subscription activity from the past day
+
+### 🔐 Authentication & Security
 - Google OAuth authentication
-- Personalized video feed from subscribed channels
-- Watch/Skip functionality to manage video consumption
-- Embedded YouTube player
-- Automatic syncing every 3 hours
-- Responsive design for mobile and desktop
+- Secure token management
+- Row-level security with Supabase
 
 ## Tech Stack
 

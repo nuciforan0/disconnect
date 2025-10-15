@@ -56,22 +56,25 @@ export class YouTubeService {
     }
   }
 
-  async getChannelActivities(
+  async getChannelRecentUploads(
     channelId: string,
-    publishedAfter?: string,
-    maxResults = 10
+    publishedAfter?: Date,
+    maxResults = 50
   ): Promise<YouTubeVideo[]> {
     this.checkQuota(this.QUOTA_COSTS.activities)
 
     try {
-      const url = new URL(`${YOUTUBE_API_BASE}/activities`)
-      url.searchParams.set('part', 'snippet,contentDetails')
+      const url = new URL(`${YOUTUBE_API_BASE}/search`)
+      url.searchParams.set('part', 'snippet')
       url.searchParams.set('channelId', channelId)
       url.searchParams.set('maxResults', maxResults.toString())
-      url.searchParams.set('type', 'upload')
+      url.searchParams.set('order', 'date')
+      url.searchParams.set('type', 'video')
       
       if (publishedAfter) {
-        url.searchParams.set('publishedAfter', publishedAfter)
+        // Ensure we get exactly the last 24 hours
+        url.searchParams.set('publishedAfter', publishedAfter.toISOString())
+        url.searchParams.set('publishedBefore', new Date().toISOString())
       }
 
       const response = await tokenManager.authenticatedFetch(url.toString())
@@ -86,11 +89,8 @@ export class YouTubeService {
       const data = await response.json()
       this.quotaUsed += this.QUOTA_COSTS.activities
 
-      const videos = data.items?.filter((item: any) => 
-        item.snippet.type === 'upload' && 
-        item.contentDetails?.upload?.videoId
-      ).map((item: any) => ({
-        id: item.contentDetails.upload.videoId,
+      const videos = data.items?.map((item: any) => ({
+        id: item.id.videoId,
         snippet: {
           title: item.snippet.title,
           channelId: item.snippet.channelId,
@@ -105,7 +105,7 @@ export class YouTubeService {
 
       return videos
     } catch (error) {
-      console.error('Error fetching channel activities:', error)
+      console.error('Error fetching channel recent uploads:', error)
       throw error
     }
   }
@@ -156,15 +156,14 @@ export class YouTubeService {
 
   async syncChannelVideos(
     channelId: string,
-    lastSyncTime?: Date
+    publishedAfter?: Date,
+    maxResults = 50
   ): Promise<YouTubeVideo[]> {
-    const publishedAfter = lastSyncTime?.toISOString()
-    
     try {
-      const videos = await this.getChannelActivities(
+      const videos = await this.getChannelRecentUploads(
         channelId,
         publishedAfter,
-        10
+        maxResults
       )
 
       // Get detailed video information if needed

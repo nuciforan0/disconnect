@@ -274,11 +274,12 @@
 
         // Sync tests
         async function testSync() {
-            log('Testing manual sync...');
+            log('Testing manual video sync...');
             updateStatus('sync-status', 'Testing sync...', 'info');
 
             try {
-                const response = await fetch('/api/sync', {
+                // Test the new sync-videos endpoint
+                const response = await fetch('/api/sync-videos', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId: 'test-user' })
@@ -286,14 +287,14 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    log(`Sync completed: ${data.videosSynced || 0} videos synced`, 'success');
-                    updateStatus('sync-status', 'Sync test passed', 'success');
+                    log(`Video sync completed: ${data.videosSynced || 0} videos from ${data.channelsSynced || 0} channels`, 'success');
+                    updateStatus('sync-status', 'Video sync test passed', 'success');
                 } else {
                     throw new Error(`HTTP ${response.status}`);
                 }
             } catch (error) {
-                log(`Sync test failed: ${error.message}`, 'error');
-                updateStatus('sync-status', 'Sync test failed', 'error');
+                log(`Video sync test failed: ${error.message}`, 'error');
+                updateStatus('sync-status', 'Video sync test failed', 'error');
             }
         }
 

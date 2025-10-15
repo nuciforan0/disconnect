@@ -122,6 +122,41 @@ export function useDeleteVideo() {
   })
 }
 
+export function useSyncVideos() {
+  const queryClient = useQueryClient()
+  const toast = useToastContext()
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      try {
+        const result = await apiService.syncVideos(userId)
+        return result
+      } catch (error) {
+        const apiError = handleAPIError(error)
+
+        toast.error(
+          'Failed to sync videos',
+          getErrorMessage(apiError)
+        )
+
+        throw apiError
+      }
+    },
+    onSuccess: (result: any) => {
+      toast.success(
+        'Videos synced successfully',
+        `Found ${result.videosSynced} new videos from ${result.channelsSynced} channels`
+      )
+      
+      // Refresh the video list
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
+    },
+    onError: (error) => {
+      console.error('Sync failed:', error)
+    }
+  })
+}
+
 export function useInfiniteVideos(limit = 20) {
   const toast = useToastContext()
 

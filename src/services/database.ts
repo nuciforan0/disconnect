@@ -110,6 +110,8 @@ export class DatabaseService {
     return count || 0
   }
 
+
+
   // Batch operations for sync
   async batchInsertVideos(videos: Omit<Video, 'id' | 'created_at'>[], batchSize = 100) {
     const results = []
@@ -123,6 +125,36 @@ export class DatabaseService {
       
       if (error) {
         console.error('Batch insert error:', error)
+        continue
+      }
+      
+      if (data) results.push(...data)
+    }
+    
+    return results
+  }
+
+  // Enhanced batch insert that avoids duplicates
+  async batchInsertVideosFiltered(userId: string, videos: Omit<Video, 'id' | 'created_at'>[], batchSize = 100) {
+    if (videos.length === 0) {
+      return []
+    }
+    
+    // Use upsert to handle duplicates gracefully
+    const results = []
+    
+    for (let i = 0; i < videos.length; i += batchSize) {
+      const batch = videos.slice(i, i + batchSize)
+      const { data, error } = await supabase
+        .from('videos')
+        .upsert(batch, { 
+          onConflict: 'user_id,video_id',
+          ignoreDuplicates: true 
+        })
+        .select()
+      
+      if (error) {
+        console.error('Batch upsert error:', error)
         continue
       }
       

@@ -1,14 +1,14 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
 
-// Mock data for now - will be replaced with actual database calls
+// Mock data representing videos from user's YouTube subscriptions from the last 24 hours
 const mockVideos = [
   {
     id: '1',
     user_id: 'user1',
     video_id: 'dQw4w9WgXcQ',
-    channel_id: 'UC123',
-    channel_name: 'Sample Channel',
-    title: 'Never Gonna Give You Up',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_name: 'Rick Astley',
+    title: 'Rick Astley - Never Gonna Give You Up (Official Video)',
     thumbnail_url: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
     published_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
     duration: '3:33',
@@ -18,12 +18,48 @@ const mockVideos = [
     id: '2',
     user_id: 'user1',
     video_id: 'jNQXAC9IVRw',
-    channel_id: 'UC456',
-    channel_name: 'Another Channel',
+    channel_id: 'UC4QobU6STFB0P71PMvOGN5A',
+    channel_name: 'jawed',
     title: 'Me at the zoo',
     thumbnail_url: 'https://img.youtube.com/vi/jNQXAC9IVRw/maxresdefault.jpg',
     published_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), // 5 hours ago
     duration: '0:19',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: '3',
+    user_id: 'user1',
+    video_id: 'M7lc1UVf-VE',
+    channel_id: 'UCsXVk37bltHxD1rDPwtNM8Q',
+    channel_name: 'Kurzgesagt – In a Nutshell',
+    title: 'The Egg - A Short Story',
+    thumbnail_url: 'https://img.youtube.com/vi/M7lc1UVf-VE/maxresdefault.jpg',
+    published_at: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(), // 8 hours ago
+    duration: '7:56',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: '4',
+    user_id: 'user1',
+    video_id: 'fJ9rUzIMcZQ',
+    channel_id: 'UCBJycsmduvYEL83R_U4JriQ',
+    channel_name: 'Marques Brownlee',
+    title: 'Tesla Model S Plaid: A New Record!',
+    thumbnail_url: 'https://img.youtube.com/vi/fJ9rUzIMcZQ/maxresdefault.jpg',
+    published_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), // 12 hours ago
+    duration: '12:34',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: '5',
+    user_id: 'user1',
+    video_id: 'QH2-TGUlwu4',
+    channel_id: 'UC2eYFnH61tmytImy1mTYvhA',
+    channel_name: 'Luke Smith',
+    title: 'Why I Use Arch Linux',
+    thumbnail_url: 'https://img.youtube.com/vi/QH2-TGUlwu4/maxresdefault.jpg',
+    published_at: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(), // 18 hours ago
+    duration: '15:42',
     created_at: new Date().toISOString()
   }
 ]
