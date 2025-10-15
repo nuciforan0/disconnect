@@ -100,11 +100,13 @@ class ApiService {
 
   async deleteVideo(videoId: string) {
     try {
-      return await this.request(`/videos/${videoId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': 'Bearer user1' // TODO: Get actual auth token
-        }
+      const params = new URLSearchParams({
+        videoId: videoId,
+        userId: 'user1' // TODO: Get from auth context
+      })
+      
+      return await this.request(`/videos?${params}`, {
+        method: 'DELETE'
       }, {
         maxRetries: 1 // Fewer retries for mutations
       })
