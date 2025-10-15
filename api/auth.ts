@@ -5,6 +5,7 @@ const GOOGLE_CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET
 const REDIRECT_URI = `${process.env.VITE_APP_URL}/api/auth`
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log('Auth API called:', { method: req.method, query: req.query, url: req.url })
   const { method, query } = req
 
   if (method === 'POST') {
@@ -87,6 +88,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('OAuth callback error:', error)
       res.redirect(`${process.env.VITE_APP_URL}/?auth=error&message=${encodeURIComponent(error.message)}`)
     }
+  } else if (method === 'GET' && !query.code) {
+    // Simple test endpoint
+    res.status(200).json({ 
+      message: 'Auth endpoint is working',
+      timestamp: new Date().toISOString(),
+      redirectUri: REDIRECT_URI
+    })
   } else {
     res.status(405).json({ error: 'Method not allowed' })
   }
