@@ -88,7 +88,7 @@ export function useDeleteVideo() {
       await queryClient.cancelQueries({ queryKey: ['videos'] })
 
       // Snapshot the previous value
-      const previousVideos = queryClient.getQueriesData(['videos'])
+      const previousVideos = queryClient.getQueriesData({ queryKey: ['videos'] })
 
       // Optimistically update to remove the video
       queryClient.setQueriesData({ queryKey: ['videos'] }, (old: any) => {
@@ -104,7 +104,7 @@ export function useDeleteVideo() {
       // Return a context object with the snapshotted value
       return { previousVideos }
     },
-    onError: (err, videoId, context) => {
+    onError: (_err, _videoId, context) => {
       // If the mutation fails, use the context returned from onMutate to roll back
       if (context?.previousVideos) {
         context.previousVideos.forEach(([queryKey, data]) => {
@@ -199,7 +199,7 @@ export function useVideoFeed() {
     handleVideoRemoved,
     handleRefresh,
     handleSync,
-    isDeleting: deleteVideoMutation.isLoading,
+    isDeleting: deleteVideoMutation.isPending,
     isRefreshing: isLoading,
   }
 }
