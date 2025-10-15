@@ -78,11 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.redirect(`${process.env.VITE_APP_URL}/login?auth=success&data=${encodeURIComponent(JSON.stringify(authData))}`)
     } catch (error) {
       console.error('OAuth callback error:', error)
-      res.redirect(`${process.env.VITE_APP_URL}/login?auth=error&message=${encodeURIComponent(error.message)}`)
-    }
-    } catch (error) {
-      console.error('OAuth callback error:', error)
-      res.redirect(`${process.env.VITE_APP_URL}/login?auth=error&message=${encodeURIComponent(error.message)}`)
+      res.redirect(`${process.env.VITE_APP_URL}/login?auth=error&message=${encodeURIComponent((error as Error).message)}`)
     }
   } else {
     res.status(405).json({ error: 'Method not allowed' })
