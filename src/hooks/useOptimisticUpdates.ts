@@ -6,9 +6,7 @@ interface OptimisticUpdate<T> {
   data?: T
 }
 
-export function useOptimisticUpdates<T extends { id: string }>(
-  initialData: T[] = []
-) {
+export function useOptimisticUpdates<T extends { id: string }>() {
   const [optimisticUpdates, setOptimisticUpdates] = useState<OptimisticUpdate<T>[]>([])
 
   const addOptimisticUpdate = useCallback((update: OptimisticUpdate<T>) => {

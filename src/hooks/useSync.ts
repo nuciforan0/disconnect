@@ -15,8 +15,8 @@ export function useSync() {
   const queryClient = useQueryClient()
   const toast = useToastContext()
 
-  const syncMutation = useMutation<SyncResult, Error, string | undefined>(
-    async (userId) => {
+  const syncMutation = useMutation({
+    mutationFn: async (userId: string | undefined) => {
       setSyncStatus('syncing')
       
       try {
@@ -40,8 +40,7 @@ export function useSync() {
         throw apiError
       }
     },
-    {
-      onSuccess: (data) => {
+    onSuccess: (data: SyncResult) => {
         setSyncStatus('success')
         
         // Show success message with details
@@ -60,12 +59,12 @@ export function useSync() {
         }
         
         // Invalidate videos query to refetch updated data
-        queryClient.invalidateQueries('videos')
+        queryClient.invalidateQueries({ queryKey: ['videos'] })
         
         // Reset status after 3 seconds
         setTimeout(() => setSyncStatus('idle'), 3000)
       },
-      onError: (error) => {
+      onError: (error: Error) => {
         setSyncStatus('error')
         console.error('Sync failed:', error)
         
@@ -85,7 +84,7 @@ export function useSync() {
       },
       retryDelay: 5000, // 5 second delay before retry
     }
-  )
+  })
 
   const triggerSync = (userId?: string) => {
     // Prevent multiple simultaneous syncs

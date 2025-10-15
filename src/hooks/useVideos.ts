@@ -70,8 +70,8 @@ export function useDeleteVideo() {
   const queryClient = useQueryClient()
   const toast = useToastContext()
 
-  return useMutation<void, Error, string>(
-    async (videoId: string) => {
+  return useMutation({
+    mutationFn: async (videoId: string) => {
       try {
         await apiService.deleteVideo(videoId)
       } catch (error) {
@@ -85,7 +85,6 @@ export function useDeleteVideo() {
         throw apiError
       }
     },
-    {
       onMutate: async (videoId) => {
         // Cancel any outgoing refetches
         await queryClient.cancelQueries(['videos'])
@@ -120,10 +119,10 @@ export function useDeleteVideo() {
       },
       onSettled: () => {
         // Always refetch after error or success
-        queryClient.invalidateQueries(['videos'])
+        queryClient.invalidateQueries({ queryKey: ['videos'] })
       },
     }
-  )
+  })
 }
 
 export function useInfiniteVideos(limit = 20) {
@@ -177,7 +176,7 @@ export function useVideoFeed() {
 
   const handleSync = () => {
     // Trigger sync and then refetch videos
-    queryClient.invalidateQueries(['videos'])
+    queryClient.invalidateQueries({ queryKey: ['videos'] })
     toast.info('Syncing videos...', 'This may take a few moments')
   }
 
