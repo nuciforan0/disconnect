@@ -1,18 +1,101 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { storage } from './_storage'
+
+// Simple in-memory storage for development
+interface Video {
+  id: string;
+  user_id: string;
+  video_id: string;
+  channel_id: string;
+  channel_name: string;
+  title: string;
+  thumbnail_url: string;
+  published_at: string;
+  duration: string;
+  created_at: string;
+}
+
+// Global storage that persists across API calls during the same deployment
+let videoStorage: Video[] = [
+  // Start with some sample videos so you can test the delete functionality
+  {
+    id: 'sample-1',
+    user_id: 'user1',
+    video_id: 'sample-vid-1',
+    channel_id: 'UC_sample_1',
+    channel_name: 'Tech Channel',
+    title: 'Sample Tech Video - You can delete this',
+    thumbnail_url: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
+    published_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    duration: '10:30',
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 'sample-2',
+    user_id: 'user1',
+    video_id: 'sample-vid-2',
+    channel_id: 'UC_sample_2',
+    channel_name: 'Gaming Channel',
+    title: 'Sample Gaming Video - You can delete this too',
+    thumbnail_url: 'https://img.youtube.com/vi/jNQXAC9IVRw/maxresdefault.jpg',
+    published_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    duration: '15:45',
+    created_at: new Date().toISOString()
+  }
+]
+
+const storage = {
+  getVideos: (userId: string): Video[] => {
+    return videoStorage.filter(video => video.user_id === userId)
+  },
+
+  addVideos: (videos: Video[]): void => {
+    videos.forEach(video => {
+      const exists = videoStorage.some(v => 
+        v.user_id === video.user_id && v.video_id === video.video_id
+      )
+      if (!exists) {
+        videoStorage.push(video)
+      }
+    })
+  },
+
+  deleteVideo: (userId: string, videoId: string): boolean => {
+    const initialLength = videoStorage.length
+    videoStorage = videoStorage.filter(video => 
+      !(video.user_id === userId && video.video_id === videoId)
+    )
+    return videoStorage.length < initialLength
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   const { method, query } = req
 
   if (method === 'GET') {
     try {
-      // Get query parameters
-      const limit = parseInt(query.limit as string) || 50
-      const offset = parseInt(query.offset as string) || 0
-      const userId = query.userId as string // In real app, get from auth token
+      // Get query parameters with better error handling
+      const limitStr = query.limit as string
+      const offsetStr = query.offset as string
+      const userId = query.userId as string
+
+      const limit = limitStr ? parseInt(limitStr) : 50
+      const offset = offsetStr ? parseInt(offsetStr) : 0
 
       if (!userId) {
         return res.status(401).json({ error: 'Authentication required' })
+      }
+
+      if (isNaN(limit) || isNaN(offset) || limit < 0 || offset < 0) {
+        return res.status(400).json({ error: 'Invalid limit or offset parameters' })
       }
 
       // TODO: Replace with actual database query
@@ -57,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // await databaseService.deleteVideo(userId, videoId)
       
       // Remove from shared storage
-      const deleted = storage.deleteVideo(userId, videoId)
+      storage.deleteVideo(userId, videoId)
       
       console.log(`Deleted video ${videoId} for user ${userId}`)
 

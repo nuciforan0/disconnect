@@ -1,12 +1,50 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { storage } from './_storage'
+
+// Simple in-memory storage for development
+interface Video {
+  id: string;
+  user_id: string;
+  video_id: string;
+  channel_id: string;
+  channel_name: string;
+  title: string;
+  thumbnail_url: string;
+  published_at: string;
+  duration: string;
+  created_at: string;
+}
+
+// Global storage that persists across API calls during the same deployment
+let videoStorage: Video[] = []
+
+const storage = {
+  addVideos: (videos: Video[]): void => {
+    videos.forEach(video => {
+      const exists = videoStorage.some(v => 
+        v.user_id === video.user_id && v.video_id === video.video_id
+      )
+      if (!exists) {
+        videoStorage.push(video)
+      }
+    })
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { userId } = req.body
+  const { userId } = req.body || {}
 
   if (!userId) {
     return res.status(400).json({ error: 'User ID is required' })
