@@ -9,6 +9,8 @@ export default function Login() {
   const navigate = useNavigate()
   const { setUser, isAuthenticated } = useAuthStore()
 
+  console.log('Login component rendered, isAuthenticated:', isAuthenticated)
+
   useEffect(() => {
     // Check for OAuth callback in URL first
     const urlParams = new URLSearchParams(window.location.search)
