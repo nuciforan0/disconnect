@@ -1,6 +1,5 @@
 import Header from '../components/Header'
 import VideoFeed from '../components/VideoFeed'
-import SyncButton from '../components/SyncButton'
 import SyncStatus from '../components/SyncStatus'
 import QuotaStatus from '../components/QuotaStatus'
 import { useAuth } from '../hooks/useAuth'
@@ -14,7 +13,6 @@ export default function Home() {
     isLoading,
     error,
     handleVideoRemoved,
-    handleRefresh,
   } = useVideoFeed()
 
   return (
@@ -37,23 +35,7 @@ export default function Home() {
               </p>
             </div>
             
-            {/* Mobile controls */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
-              <div className="flex gap-2 sm:gap-3">
-                <button
-                  onClick={handleRefresh}
-                  className="flex-1 sm:flex-none px-3 py-2 text-gray-600 hover:text-gray-800 transition-colors duration-200 rounded-lg hover:bg-gray-100"
-                  disabled={isLoading}
-                  aria-label="Refresh videos"
-                >
-                  <svg className="w-5 h-5 mx-auto sm:mx-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  <span className="sr-only sm:not-sr-only sm:ml-2">Refresh</span>
-                </button>
-                <SyncButton userId={user?.id} className="flex-1 sm:flex-none" />
-              </div>
-            </div>
+
           </div>
         </div>
 
@@ -76,7 +58,6 @@ export default function Home() {
           videos={videos}
           loading={isLoading}
           error={error}
-          onRefresh={handleRefresh}
           onVideoRemoved={handleVideoRemoved}
         />
         

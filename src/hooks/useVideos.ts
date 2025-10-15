@@ -151,28 +151,11 @@ export function useInfiniteVideos(limit = 20) {
 
 // Hook for managing video feed state with enhanced error handling
 export function useVideoFeed() {
-  const queryClient = useQueryClient()
-  const toast = useToastContext()
-  const { data, isLoading, error, refetch, isError } = useVideos()
+  const { data, isLoading, error, isError } = useVideos()
   const deleteVideoMutation = useDeleteVideo()
 
   const handleVideoRemoved = (videoId: string) => {
     deleteVideoMutation.mutate(videoId)
-  }
-
-  const handleRefresh = async () => {
-    try {
-      await refetch()
-      toast.success('Videos refreshed')
-    } catch (error) {
-      // Error is already handled by the query
-    }
-  }
-
-  const handleSync = () => {
-    // Trigger sync and then refetch videos
-    queryClient.invalidateQueries({ queryKey: ['videos'] })
-    toast.info('Syncing videos...', 'This may take a few moments')
   }
 
   // Enhanced error handling
@@ -197,9 +180,6 @@ export function useVideoFeed() {
     error: error?.message || null,
     errorState: getErrorState(),
     handleVideoRemoved,
-    handleRefresh,
-    handleSync,
     isDeleting: deleteVideoMutation.isPending,
-    isRefreshing: isLoading,
   }
 }

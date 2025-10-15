@@ -127,21 +127,7 @@ class ApiService {
     }
   }
 
-  async syncVideos(userId?: string) {
-    try {
-      return await this.request('/sync', {
-        method: 'POST',
-        body: JSON.stringify({ userId }),
-      }, {
-        maxRetries: 2,
-        baseDelay: 2000, // Longer delay for sync operations
-        maxDelay: 15000
-      })
-    } catch (error) {
-      console.error('Failed to sync videos:', error)
-      throw error
-    }
-  }
+
 
   // Health check endpoint
   async healthCheck() {
@@ -156,59 +142,9 @@ class ApiService {
     }
   }
 
-  // Circuit breaker pattern for critical operations
-  private circuitBreaker = {
-    failures: 0,
-    lastFailureTime: 0,
-    threshold: 5,
-    timeout: 60000, // 1 minute
-    state: 'closed' as 'closed' | 'open' | 'half-open'
-  }
 
-  private async requestWithCircuitBreaker<T>(
-    endpoint: string,
-    options?: RequestInit
-  ): Promise<T> {
-    const now = Date.now()
 
-    // Check if circuit breaker is open
-    if (this.circuitBreaker.state === 'open') {
-      if (now - this.circuitBreaker.lastFailureTime < this.circuitBreaker.timeout) {
-        throw new Error('Service temporarily unavailable (circuit breaker open)')
-      } else {
-        this.circuitBreaker.state = 'half-open'
-      }
-    }
 
-    try {
-      const result = await this.request<T>(endpoint, options)
-      
-      // Reset circuit breaker on success
-      if (this.circuitBreaker.state === 'half-open') {
-        this.circuitBreaker.state = 'closed'
-        this.circuitBreaker.failures = 0
-      }
-      
-      return result
-    } catch (error) {
-      this.circuitBreaker.failures++
-      this.circuitBreaker.lastFailureTime = now
-
-      if (this.circuitBreaker.failures >= this.circuitBreaker.threshold) {
-        this.circuitBreaker.state = 'open'
-      }
-
-      throw error
-    }
-  }
-
-  // Use circuit breaker for critical sync operations
-  async syncVideosWithCircuitBreaker(userId?: string) {
-    return this.requestWithCircuitBreaker('/sync', {
-      method: 'POST',
-      body: JSON.stringify({ userId }),
-    })
-  }
 }
 
 export const apiService = new ApiService()

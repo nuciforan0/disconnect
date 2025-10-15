@@ -16,7 +16,6 @@ interface VideoFeedProps {
   videos: Video[];
   loading: boolean;
   error: string | null;
-  onRefresh: () => void;
   onVideoRemoved: (videoId: string) => void;
 }
 
@@ -24,7 +23,6 @@ export default function VideoFeed({
   videos,
   loading,
   error,
-  onRefresh,
   onVideoRemoved
 }: VideoFeedProps) {
   const [removingVideos, setRemovingVideos] = useState<Set<string>>(new Set())
@@ -80,12 +78,9 @@ export default function VideoFeed({
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Something went wrong</h3>
           <p className="text-gray-600 mb-6">{error}</p>
-          <button
-            onClick={onRefresh}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors duration-200 font-medium"
-          >
-            Try Again
-          </button>
+          <p className="text-sm text-gray-500">
+            Videos will automatically sync at the next scheduled time.
+          </p>
         </div>
       </div>
     )
@@ -102,14 +97,8 @@ export default function VideoFeed({
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">No videos found</h3>
           <p className="text-gray-600 mb-6">
-            Your video feed is empty. Try syncing your subscriptions to get new videos.
+            Your video feed is empty. Videos will automatically sync daily at 8 AM AEDT.
           </p>
-          <button
-            onClick={onRefresh}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors duration-200 font-medium"
-          >
-            Sync Videos
-          </button>
         </div>
       </div>
     )

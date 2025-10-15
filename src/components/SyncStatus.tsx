@@ -2,28 +2,25 @@ import { useState, useEffect } from 'react'
 import { cronService } from '../services/cronService'
 
 export default function SyncStatus() {
-  const [syncInfo, setSyncInfo] = useState<{
-    lastSync: Date | null
-    nextSync: Date | null
-  }>({ lastSync: null, nextSync: null })
+  const [timeUntilSync, setTimeUntilSync] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const fetchSyncStatus = async () => {
+    const updateCountdown = () => {
       try {
-        const status = await cronService.getSyncStatus()
-        setSyncInfo(status)
+        const countdown = cronService.getTimeUntilNextSync()
+        setTimeUntilSync(countdown)
+        setIsLoading(false)
       } catch (error) {
-        console.error('Failed to fetch sync status:', error)
-      } finally {
+        console.error('Failed to calculate countdown:', error)
         setIsLoading(false)
       }
     }
 
-    fetchSyncStatus()
+    updateCountdown()
     
-    // Update every minute
-    const interval = setInterval(fetchSyncStatus, 60000)
+    // Update every second for real-time countdown
+    const interval = setInterval(updateCountdown, 1000)
     return () => clearInterval(interval)
   }, [])
 
@@ -41,32 +38,25 @@ export default function SyncStatus() {
   return (
     <div className="bg-white rounded-lg shadow-sm border p-4">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-medium text-gray-900">Auto-Sync Status</h3>
+        <h3 className="text-sm font-medium text-gray-900">Next Sync</h3>
         <div className="flex items-center">
           <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-          <span className="text-xs text-gray-500">Active</span>
+          <span className="text-xs text-gray-500">Daily at 8 AM AEDT</span>
         </div>
       </div>
       
-      <div className="space-y-2 text-sm text-gray-600">
-        {syncInfo.lastSync && (
-          <div className="flex justify-between">
-            <span>Last sync:</span>
-            <span>{cronService.formatSyncTime(syncInfo.lastSync)}</span>
-          </div>
-        )}
-        
-        {syncInfo.nextSync && (
-          <div className="flex justify-between">
-            <span>Next sync:</span>
-            <span>{cronService.formatNextSyncTime(syncInfo.nextSync)}</span>
-          </div>
-        )}
+      <div className="text-center py-2">
+        <div className="text-2xl font-mono font-bold text-gray-900">
+          {timeUntilSync}
+        </div>
+        <p className="text-xs text-gray-500 mt-1">
+          until next sync
+        </p>
       </div>
       
       <div className="mt-3 pt-3 border-t border-gray-100">
-        <p className="text-xs text-gray-500">
-          Videos are automatically synced every 3 hours
+        <p className="text-xs text-gray-500 text-center">
+          Videos sync automatically once per day
         </p>
       </div>
     </div>

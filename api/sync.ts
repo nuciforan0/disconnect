@@ -21,28 +21,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const startTime = Date.now()
-  const { userId } = req.body
-  const isCronJob = !userId
 
   try {
-    if (userId) {
-      // Manual sync for specific user
-      console.log(`Manual sync requested for user: ${userId}`)
-      
-      const result = await syncUserVideos(userId)
-      
-      console.log(`Sync completed for user ${userId}:`, result)
-      res.status(200).json(result)
-    } else {
-      // Cron job - sync all users
-      console.log('Cron job: Starting automated sync for all users')
-      
-      const result = await syncAllUsers()
-      result.executionTime = Date.now() - startTime
-      
-      console.log('Cron job completed:', result)
-      res.status(200).json(result)
-    }
+    // Automated daily sync for all users
+    console.log('Daily sync: Starting automated sync for all users')
+    
+    const result = await syncAllUsers()
+    result.executionTime = Date.now() - startTime
+    
+    console.log('Daily sync completed:', result)
+    res.status(200).json(result)
   } catch (error) {
     console.error('Sync error:', error)
     

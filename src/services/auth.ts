@@ -121,26 +121,21 @@ class AuthService {
   // Handle OAuth callback (called from URL params)
   handleAuthCallback(urlParams: URLSearchParams): AuthUser | null {
     const authStatus = urlParams.get('auth')
-    console.log('handleAuthCallback - authStatus:', authStatus)
     
     if (authStatus === 'success') {
       const dataParam = urlParams.get('data')
-      console.log('handleAuthCallback - dataParam exists:', !!dataParam)
       
       if (dataParam) {
         try {
           const authData = JSON.parse(decodeURIComponent(dataParam))
-          console.log('handleAuthCallback - parsed authData:', authData)
           
           // Save tokens
           if (authData.tokens) {
-            console.log('handleAuthCallback - saving tokens')
             this.saveTokensToStorage(authData.tokens)
           }
           
           // Save user info to localStorage
           if (authData.user) {
-            console.log('handleAuthCallback - saving user info')
             localStorage.setItem('user_info', JSON.stringify(authData.user))
             return authData.user
           }

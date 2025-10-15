@@ -10,10 +10,8 @@ export const testIds = {
   videoCard: 'video-card',
   watchButton: 'watch-button',
   skipButton: 'skip-button',
-  refreshButton: 'refresh-button',
   
-  // Sync
-  syncButton: 'sync-button',
+  // Sync Status (countdown timer)
   syncStatus: 'sync-status',
   
   // Video Player
@@ -168,28 +166,20 @@ export const testScenarios = {
     console.log('✅ Error handling test completed')
   },
   
-  // Sync functionality
-  syncFlow: async () => {
-    console.log('🧪 Testing sync functionality...')
+  // Sync status display
+  syncStatusDisplay: async () => {
+    console.log('🧪 Testing sync status display...')
     
-    // 1. Should see sync button
-    await waitForElement(`[data-testid="${testIds.syncButton}"]`)
-    console.log('✅ Sync button found')
+    // 1. Should see sync status with countdown
+    await waitForElement(`[data-testid="${testIds.syncStatus}"]`)
+    console.log('✅ Sync status found')
     
-    // 2. Click sync button
-    const syncButton = document.querySelector(`[data-testid="${testIds.syncButton}"]`) as HTMLElement
-    syncButton?.click()
-    console.log('✅ Sync initiated')
+    // 2. Should display countdown timer
+    const syncStatus = document.querySelector(`[data-testid="${testIds.syncStatus}"]`)
+    const hasCountdown = syncStatus?.textContent?.includes(':')
+    console.log(`✅ Countdown timer: ${hasCountdown ? 'displayed' : 'not found'}`)
     
-    // 3. Should show loading state
-    await waitForElement(`[data-testid="${testIds.loadingSpinner}"]`)
-    console.log('✅ Loading state displayed')
-    
-    // 4. Should complete and show success
-    await waitForElementToDisappear(`[data-testid="${testIds.loadingSpinner}"]`)
-    console.log('✅ Sync completed')
-    
-    console.log('🎉 Sync flow test completed successfully!')
+    console.log('🎉 Sync status display test completed successfully!')
   }
 }
 

@@ -5,7 +5,6 @@ const GOOGLE_CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET
 const REDIRECT_URI = `${process.env.VITE_APP_URL}/api/auth`
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  console.log('Auth API called:', { method: req.method, query: req.query, url: req.url })
   const { method, query } = req
 
   if (method === 'POST') {
@@ -27,7 +26,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(200).json({ authUrl })
   } else if (method === 'GET' && query.code) {
     // Handle OAuth callback
-    console.log('OAuth callback received with code:', query.code)
     try {
       const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
@@ -44,13 +42,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
 
       if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text()
-        console.error('Token exchange failed:', errorText)
         throw new Error('Failed to exchange code for tokens')
       }
 
       const tokens = await tokenResponse.json()
-      console.log('Tokens received:', { ...tokens, access_token: '***', refresh_token: '***' })
 
       // Get user info
       const userResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -64,7 +59,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const userInfo = await userResponse.json()
-      console.log('User info received:', userInfo)
 
       // Store user and tokens in database (will implement database operations)
       // For now, redirect with success and include tokens
@@ -81,20 +75,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      const redirectUrl = `${process.env.VITE_APP_URL}/login?auth=success&data=${encodeURIComponent(JSON.stringify(authData))}`
-      console.log('Redirecting to:', redirectUrl)
-      res.redirect(redirectUrl)
+      res.redirect(`${process.env.VITE_APP_URL}/login?auth=success&data=${encodeURIComponent(JSON.stringify(authData))}`)
     } catch (error) {
       console.error('OAuth callback error:', error)
       res.redirect(`${process.env.VITE_APP_URL}/login?auth=error&message=${encodeURIComponent(error.message)}`)
     }
-  } else if (method === 'GET' && !query.code) {
-    // Simple test endpoint
-    res.status(200).json({ 
-      message: 'Auth endpoint is working',
-      timestamp: new Date().toISOString(),
-      redirectUri: REDIRECT_URI
-    })
+    } catch (error) {
+      console.error('OAuth callback error:', error)
+      res.redirect(`${process.env.VITE_APP_URL}/login?auth=error&message=${encodeURIComponent(error.message)}`)
+    }
   } else {
     res.status(405).json({ error: 'Method not allowed' })
   }
