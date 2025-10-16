@@ -355,29 +355,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const durations = await getVideoDurations(videoIds, accessToken)
       
       // Convert RSS videos to our format, filtering out shorts
-      const formattedVideos = rssVideos
-        .filter((video: any) => {
-          // Only include videos that have durations (non-shorts)
-          return durations[video.videoId] !== undefined
-        })
-        .map((video: any) => {
-          uniqueChannels.add(video.channelId)
-          
-          return {
-            id: `rss-${video.videoId}`,
-            user_id: userId,
-            video_id: video.videoId,
-            channel_id: video.channelId,
-            channel_name: video.channelName,
-            title: video.title,
-            thumbnail_url: video.thumbnailUrl,
-            published_at: video.publishedAt,
-            duration: durations[video.videoId] || 'Unknown',
-            created_at: new Date().toISOString()
-          }
-        })
+      console.log(`Processing ${rssVideos.length} RSS videos, ${Object.keys(durations).length} have durations`)
       
-      allVideos = formattedVideos
+      const formattedVideos = rssVideos.map((video: any) => {
+        uniqueChannels.add(video.channelId)
+        
+        const videoDuration = durations[video.videoId] || 'Unknown'
+        console.log(`Video ${video.videoId}: ${video.title} - Duration: ${videoDuration}`)
+        
+        return {
+          id: `rss-${video.videoId}`,
+          user_id: userId,
+          video_id: video.videoId,
+          channel_id: video.channelId,
+          channel_name: video.channelName,
+          title: video.title,
+          thumbnail_url: video.thumbnailUrl,
+          published_at: video.publishedAt,
+          duration: videoDuration,
+          created_at: new Date().toISOString()
+        }
+      })
+      
+      // Filter out shorts AFTER creating the formatted videos
+      const nonShortsVideos = formattedVideos.filter(video => video.duration !== 'Unknown')
+      console.log(`Filtered: ${formattedVideos.length} total videos → ${nonShortsVideos.length} non-shorts videos`)
+      
+      allVideos = nonShortsVideos
       console.log(`RSS sync complete: ${allVideos.length} videos from ${uniqueChannels.size} channels`)
       
       // Save videos to database AND in-memory storage

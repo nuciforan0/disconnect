@@ -3,7 +3,7 @@ import VideoFeed from '../components/VideoFeed'
 import SyncStatus from '../components/SyncStatus'
 import QuotaStatus from '../components/QuotaStatus'
 import { useAuth } from '../hooks/useAuth'
-import { useVideoFeed, useSyncVideos, useTestDailySync } from '../hooks/useVideos'
+import { useVideoFeed, useSyncVideos } from '../hooks/useVideos'
 import { authService } from '../services/auth'
 
 export default function Home() {
@@ -16,7 +16,6 @@ export default function Home() {
     handleVideoRemoved,
   } = useVideoFeed()
   const syncVideosMutation = useSyncVideos()
-  const testSyncMutation = useTestDailySync()
 
   const handleSyncVideos = async () => {
     if (user?.id) {
@@ -37,9 +36,7 @@ export default function Home() {
     }
   }
 
-  const handleTestDailySync = () => {
-    testSyncMutation.mutate()
-  }
+
 
   return (
     <div className="min-h-screen bg-gray-50">
