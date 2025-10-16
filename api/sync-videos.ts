@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { databaseService } from '../src/services/database'
+// Database service import - temporarily disabled for Vercel deployment
+// import { databaseService } from '../src/services/database'
 
 // Simple in-memory storage for development
 interface Video {
@@ -340,27 +341,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       allVideos = formattedVideos
       console.log(`RSS sync complete: ${allVideos.length} videos from ${uniqueChannels.size} channels`)
       
-      // Save videos to database (for persistence across refreshes)
-      try {
-        console.log(`Saving ${allVideos.length} videos to database...`)
-        
-        const videosToSave = allVideos.map(video => ({
-          user_id: video.user_id,
-          video_id: video.video_id,
-          channel_id: video.channel_id,
-          channel_name: video.channel_name,
-          title: video.title,
-          thumbnail_url: video.thumbnail_url,
-          published_at: video.published_at,
-          duration: video.duration
-        }))
-        
-        const savedVideos = await databaseService.batchInsertVideosFiltered(videosToSave)
-        console.log(`Successfully saved ${savedVideos.length} videos to database`)
-      } catch (error) {
-        console.error('Error saving videos to database:', error)
-        // Don't fail the sync if database save fails - videos will still appear via direct response
-      }
+      // Save videos to in-memory storage (database integration coming later)
+      console.log(`Saving ${allVideos.length} videos to storage...`)
+      storage.addVideos(allVideos)
+      console.log(`Successfully saved videos to storage`)
     } else {
       console.log('No recent videos found in RSS feeds')
     }
