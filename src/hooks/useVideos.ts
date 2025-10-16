@@ -160,8 +160,34 @@ export function useSyncVideos() {
         `Found ${result.videosSynced} new videos from ${result.channelsSynced} channels${debugInfo}${errorInfo}`
       )
       
-      // Refresh the video list
-      queryClient.invalidateQueries({ queryKey: ['videos'] })
+      // If sync returned videos, update the cache directly
+      if (result.videos && result.videos.length > 0) {
+        console.log(`Updating cache with ${result.videos.length} synced videos`)
+        
+        // Update all video queries with the new videos
+        queryClient.setQueriesData({ queryKey: ['videos'] }, (oldData: any) => {
+          if (!oldData) {
+            return {
+              videos: result.videos,
+              hasMore: false,
+              total: result.videos.length
+            }
+          }
+          
+          // Merge new videos with existing ones, avoiding duplicates
+          const existingVideoIds = new Set(oldData.videos.map((v: any) => v.videoId))
+          const newVideos = result.videos.filter((v: any) => !existingVideoIds.has(v.videoId))
+          
+          return {
+            ...oldData,
+            videos: [...newVideos, ...oldData.videos],
+            total: oldData.total + newVideos.length
+          }
+        })
+      } else {
+        // Fallback: refresh the video list
+        queryClient.invalidateQueries({ queryKey: ['videos'] })
+      }
     },
     onError: (error) => {
       console.error('Sync failed:', error)

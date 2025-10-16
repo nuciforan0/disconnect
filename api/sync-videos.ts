@@ -309,8 +309,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     console.log(`YouTube sync completed for user ${userId}:`, result)
     
+    // Format videos for the frontend
+    const formattedVideos = allVideos.map(video => ({
+      id: video.id,
+      videoId: video.video_id,
+      channelId: video.channel_id,
+      channelName: video.channel_name,
+      title: video.title,
+      thumbnailUrl: video.thumbnail_url,
+      publishedAt: formatTimeAgo(new Date(video.published_at)),
+      duration: video.duration,
+    }))
+
     res.status(200).json({
       success: true,
+      videos: formattedVideos, // Include the actual videos in the response
       ...result
     })
   } catch (error) {
@@ -323,5 +336,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     
     res.status(500).json(errorResponse)
+  }
+}
+
+function formatTimeAgo(date: Date): string {
+  const now = new Date()
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+  if (diffInSeconds < 60) {
+    return 'Just now'
+  } else if (diffInSeconds < 3600) {
+    const minutes = Math.floor(diffInSeconds / 60)
+    return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
+  } else if (diffInSeconds < 86400) {
+    const hours = Math.floor(diffInSeconds / 3600)
+    return `${hours} hour${hours > 1 ? 's' : ''} ago`
+  } else if (diffInSeconds < 604800) {
+    const days = Math.floor(diffInSeconds / 86400)
+    return `${days} day${days > 1 ? 's' : ''} ago`
+  } else {
+    const weeks = Math.floor(diffInSeconds / 604800)
+    return `${weeks} week${weeks > 1 ? 's' : ''} ago`
   }
 }
