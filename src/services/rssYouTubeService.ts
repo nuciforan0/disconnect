@@ -163,7 +163,7 @@ export class RSSYouTubeService {
   }
 
   // Convert RSS videos to your database format
-  convertToYouTubeVideos(rssVideos: RSSVideo[], userId: string): Omit<YouTubeVideo, 'id'>[] {
+  convertToYouTubeVideos(rssVideos: RSSVideo[]): Omit<YouTubeVideo, 'id'>[] {
     return rssVideos.map(video => ({
       snippet: {
         title: video.title,
@@ -173,6 +173,8 @@ export class RSSYouTubeService {
         thumbnails: {
           default: { url: video.thumbnailUrl },
           medium: { url: video.thumbnailUrl.replace('mqdefault', 'hqdefault') },
+          high: { url: video.thumbnailUrl.replace('mqdefault', 'maxresdefault') },
+          maxres: { url: video.thumbnailUrl.replace('mqdefault', 'maxresdefault') },
         },
       },
       contentDetails: {
