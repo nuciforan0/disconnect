@@ -1,5 +1,18 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-// Database integration temporarily disabled due to Vercel import issues
+import { createClient } from '@supabase/supabase-js'
+
+// Inline Supabase setup to avoid import issues
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY
+  
+  if (!supabaseUrl || !serviceKey) {
+    console.log('Missing Supabase environment variables, using memory storage')
+    return null
+  }
+  
+  return createClient(supabaseUrl, serviceKey)
+}
 
 // Simple in-memory storage for development
 interface Video {
@@ -98,15 +111,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // TODO: Replace with actual database query
       // const videos = await databaseService.getUserVideos(userId, limit, offset)
       
-      // Use in-memory storage (database integration coming later)
-      const memoryVideos = storage.getVideos(userId)
-        .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+      // Try database first, fallback to memory
+      let userVideos: any[] = []
+      let totalCount = 0
       
-      const userVideos = memoryVideos.slice(offset, offset + limit)
-      const totalCount = memoryVideos.length
-      
-      console.log(`Videos API: Found ${userVideos.length} videos from memory for user ${userId}`)
-      console.log(`Videos API: Total videos in storage: ${memoryVideos.length}`)
+      const supabase = getSupabaseClient()
+      if (supabase) {
+        try {
+          // Get user from database
+          const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('google_id', userId)
+            .single()
+          
+          if (user) {
+            // Get videos from database
+            const { data: dbVideos } = await supabase
+              .from('videos')
+              .select('*')
+              .eq('user_id', user.id)
+              .order('published_at', { ascending: false })
+              .range(offset, offset + limit - 1)
+            
+            const { count } = await supabase
+              .from('videos')
+              .select('*', { count: 'exact', head: true })
+              .eq('user_id', user.id)
+            
+            userVideos = dbVideos || []
+            totalCount = count || 0
+            
+            console.log(`✅ Found ${userVideos.length} videos from Supabase database for user ${userId}`)
+          } else {
+            throw new Error('User not found in database')
+          }
+        } catch (error) {
+          console.error('Database error, falling back to memory:', error)
+          
+          // Fallback to memory
+          const memoryVideos = storage.getVideos(userId)
+            .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+          
+          userVideos = memoryVideos.slice(offset, offset + limit)
+          totalCount = memoryVideos.length
+          
+          console.log(`📦 Found ${userVideos.length} videos from memory for user ${userId}`)
+        }
+      } else {
+        // No Supabase config, use memory
+        const memoryVideos = storage.getVideos(userId)
+          .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+        
+        userVideos = memoryVideos.slice(offset, offset + limit)
+        totalCount = memoryVideos.length
+        
+        console.log(`📦 Using memory storage: ${userVideos.length} videos for user ${userId}`)
+      }
       
       const hasMore = offset + limit < totalCount
 
@@ -143,9 +204,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // TODO: Replace with actual database deletion
       // await databaseService.deleteVideo(userId, videoId)
       
-      // Remove from in-memory storage
-      storage.deleteVideo(userId, videoId)
-      console.log(`Deleted video ${videoId} from memory for user ${userId}`)
+      // Try database first, fallback to memory
+      const supabase = getSupabaseClient()
+      if (supabase) {
+        try {
+          // Get user from database
+          const { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('google_id', userId)
+            .single()
+          
+          if (user) {
+            await supabase
+              .from('videos')
+              .delete()
+              .eq('user_id', user.id)
+              .eq('video_id', videoId)
+            
+            console.log(`✅ Deleted video ${videoId} from Supabase database`)
+          } else {
+            throw new Error('User not found')
+          }
+        } catch (error) {
+          console.error('Database delete error, using memory:', error)
+          storage.deleteVideo(userId, videoId)
+          console.log(`📦 Deleted video ${videoId} from memory`)
+        }
+      } else {
+        // No database, use memory
+        storage.deleteVideo(userId, videoId)
+        console.log(`📦 Deleted video ${videoId} from memory`)
+      }
       
       console.log(`Deleted video ${videoId} for user ${userId}`)
 

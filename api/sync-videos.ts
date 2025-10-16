@@ -1,5 +1,18 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-// Database integration temporarily disabled due to Vercel import issues
+import { createClient } from '@supabase/supabase-js'
+
+// Inline Supabase setup to avoid import issues
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY
+  
+  if (!supabaseUrl || !serviceKey) {
+    console.log('Missing Supabase environment variables, using memory storage')
+    return null
+  }
+  
+  return createClient(supabaseUrl, serviceKey)
+}
 
 // Simple in-memory storage for development
 interface Video {
@@ -340,10 +353,73 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       allVideos = formattedVideos
       console.log(`RSS sync complete: ${allVideos.length} videos from ${uniqueChannels.size} channels`)
       
-      // Save videos to in-memory storage (database integration coming later)
-      console.log(`Saving ${allVideos.length} videos to storage...`)
+      // Save videos to database AND in-memory storage
+      console.log(`Saving ${allVideos.length} videos...`)
+      
+      const supabase = getSupabaseClient()
+      if (supabase) {
+        try {
+          // Get or create user in database
+          let { data: user } = await supabase
+            .from('users')
+            .select('*')
+            .eq('google_id', userId)
+            .single()
+          
+          if (!user) {
+            // Create new user
+            const { data: newUser } = await supabase
+              .from('users')
+              .insert({
+                google_id: userId,
+                email: 'user@example.com', // You can get real email later
+                access_token: accessToken,
+                refresh_token: 'placeholder'
+              })
+              .select()
+              .single()
+            user = newUser
+            console.log(`Created new user in database: ${user?.id}`)
+          }
+          
+          if (user) {
+            // Prepare videos for database
+            const videosToSave = allVideos.map(video => ({
+              user_id: user.id,
+              video_id: video.video_id,
+              channel_id: video.channel_id,
+              channel_name: video.channel_name,
+              title: video.title,
+              thumbnail_url: video.thumbnail_url,
+              published_at: video.published_at,
+              duration: video.duration
+            }))
+            
+            // Save videos to database (upsert to handle duplicates)
+            const { data: savedVideos } = await supabase
+              .from('videos')
+              .upsert(videosToSave, { 
+                onConflict: 'user_id,video_id',
+                ignoreDuplicates: true 
+              })
+              .select()
+            
+            console.log(`✅ Saved ${savedVideos?.length || 0} videos to Supabase database!`)
+            
+            // Update user's last sync time
+            await supabase
+              .from('users')
+              .update({ last_sync: new Date().toISOString() })
+              .eq('id', user.id)
+          }
+        } catch (error) {
+          console.error('Database save error:', error)
+        }
+      }
+      
+      // Also save to memory as backup
       storage.addVideos(allVideos)
-      console.log(`Successfully saved videos to storage`)
+      console.log(`Also saved to memory storage`)
     } else {
       console.log('No recent videos found in RSS feeds')
     }
