@@ -2,7 +2,6 @@ import { youtubeService } from './youtube'
 import { databaseService } from './database'
 import { batchProcessor } from './batchProcessor'
 import { quotaManager } from './quotaManager'
-import { Channel } from '../types/database'
 import { handleAPIError } from '../lib/errorHandler'
 
 export interface SyncResult {
