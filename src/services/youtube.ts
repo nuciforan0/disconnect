@@ -56,6 +56,69 @@ export class YouTubeService {
     }
   }
 
+  async getSubscriptionFeed(
+    publishedAfter?: Date,
+    maxResults = 50,
+    pageToken?: string
+  ): Promise<{
+    videos: YouTubeVideo[];
+    nextPageToken?: string;
+  }> {
+    this.checkQuota(this.QUOTA_COSTS.activities)
+
+    try {
+      const url = new URL(`${YOUTUBE_API_BASE}/activities`)
+      url.searchParams.set('part', 'snippet,contentDetails')
+      url.searchParams.set('mine', 'true')
+      url.searchParams.set('maxResults', maxResults.toString())
+      
+      if (publishedAfter) {
+        url.searchParams.set('publishedAfter', publishedAfter.toISOString())
+      }
+      
+      if (pageToken) {
+        url.searchParams.set('pageToken', pageToken)
+      }
+
+      const response = await tokenManager.authenticatedFetch(url.toString())
+      
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('YouTube API quota exceeded')
+        }
+        throw new Error(`YouTube API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      this.quotaUsed += this.QUOTA_COSTS.activities
+
+      // Filter for upload activities and extract video data
+      const videos = data.items
+        ?.filter((item: any) => item.snippet.type === 'upload')
+        ?.map((item: any) => ({
+          id: item.contentDetails.upload.videoId,
+          snippet: {
+            title: item.snippet.title,
+            channelId: item.snippet.channelId,
+            channelTitle: item.snippet.channelTitle,
+            publishedAt: item.snippet.publishedAt,
+            thumbnails: item.snippet.thumbnails,
+          },
+          contentDetails: {
+            duration: 'PT0S', // Will get actual duration from videos API if needed
+          },
+        })) || []
+
+      return {
+        videos,
+        nextPageToken: data.nextPageToken,
+      }
+    } catch (error) {
+      console.error('Error fetching subscription feed:', error)
+      throw error
+    }
+  }
+
   async getChannelRecentUploads(
     channelId: string,
     publishedAfter?: Date,
@@ -152,6 +215,52 @@ export class YouTubeService {
     } while (nextPageToken)
 
     return allChannels
+  }
+
+  async getAllSubscriptionVideos(
+    publishedAfter?: Date,
+    maxResults = 200
+  ): Promise<YouTubeVideo[]> {
+    const allVideos: YouTubeVideo[] = []
+    let nextPageToken: string | undefined
+    let remainingResults = maxResults
+
+    try {
+      do {
+        const pageSize = Math.min(50, remainingResults) // API max is 50 per request
+        const result = await this.getSubscriptionFeed(
+          publishedAfter,
+          pageSize,
+          nextPageToken
+        )
+        
+        allVideos.push(...result.videos)
+        nextPageToken = result.nextPageToken
+        remainingResults -= result.videos.length
+        
+        // Add delay to avoid rate limiting
+        if (nextPageToken && remainingResults > 0) {
+          await this.delay(100)
+        }
+      } while (nextPageToken && remainingResults > 0)
+
+      // Get detailed video information for all videos
+      if (allVideos.length > 0) {
+        const videoIds = allVideos.map(v => v.id)
+        const detailedVideos = await this.getVideoDetails(videoIds)
+        
+        // Merge the data
+        return allVideos.map(video => {
+          const detailed = detailedVideos.find(d => d.id === video.id)
+          return detailed || video
+        })
+      }
+
+      return allVideos
+    } catch (error) {
+      console.error('Error syncing subscription videos:', error)
+      throw error
+    }
   }
 
   async syncChannelVideos(

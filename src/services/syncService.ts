@@ -88,66 +88,60 @@ export class SyncService {
     }
 
     try {
-      // Get user's channels from database
-      const userChannels = await databaseService.getUserChannels(userId)
-      
-      if (userChannels.length === 0) {
-        result.errors.push('No subscribed channels found. Please sync subscriptions first.')
-        return result
+      // Check quota before starting
+      if (!quotaManager.canPerformOperation('activities', 3)) {
+        throw new Error('Insufficient quota to sync videos')
       }
 
       // Always fetch videos from exactly the last 24 hours
       const exactlyOneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
-      // Process channels with quota-aware batch processing
-      const channelProcessor = async (channel: Channel) => {
-        try {
-          const videos = await youtubeService.syncChannelVideos(
-            channel.channel_id,
-            exactlyOneDayAgo,
-            50 // Get more videos to ensure we don't miss any from the last 24h
-          )
-
-          // Convert to database format
-          const videosToStore = videos.map(video => ({
-            user_id: userId,
-            video_id: video.id,
-            channel_id: channel.channel_id,
-            channel_name: channel.channel_name,
-            title: video.snippet.title,
-            thumbnail_url: video.snippet.thumbnails?.medium?.url || video.snippet.thumbnails?.default?.url,
-            published_at: new Date(video.snippet.publishedAt),
-            duration: this.parseDuration(video.contentDetails?.duration),
-          }))
-
-          return videosToStore
-        } catch (error) {
-          console.error(`Error syncing channel ${channel.channel_id}:`, error)
-          throw error
-        }
-      }
-
-      const batchResult = await batchProcessor.processChannelsWithQuota(
-        userChannels,
-        channelProcessor,
-        'activities'
+      // Use the efficient activities API to get all subscription videos at once
+      console.log('Fetching subscription feed using efficient activities API...')
+      const videos = await youtubeService.getAllSubscriptionVideos(
+        exactlyOneDayAgo,
+        200 // Get up to 200 videos from the last 24h
       )
 
-      // Flatten all videos and batch insert (filtering out skipped videos)
-      const allVideos = batchResult.results.flat()
-      
-      if (allVideos.length > 0) {
-        const insertedVideos = await databaseService.batchInsertVideosFiltered(allVideos, 100)
+      console.log(`Found ${videos.length} videos from subscription feed`)
+
+      if (videos.length === 0) {
+        console.log('No new videos found in subscription feed')
+        return result
+      }
+
+      // Get user's channels to map channel names
+      const userChannels = await databaseService.getUserChannels(userId)
+      const channelMap = new Map(
+        userChannels.map(ch => [ch.channel_id, ch.channel_name])
+      )
+
+      // Convert to database format
+      const videosToStore = videos.map(video => ({
+        user_id: userId,
+        video_id: video.id,
+        channel_id: video.snippet.channelId,
+        channel_name: channelMap.get(video.snippet.channelId) || video.snippet.channelTitle,
+        title: video.snippet.title,
+        thumbnail_url: video.snippet.thumbnails?.medium?.url || video.snippet.thumbnails?.default?.url,
+        published_at: new Date(video.snippet.publishedAt),
+        duration: this.parseDuration(video.contentDetails?.duration),
+      }))
+
+      // Batch insert videos
+      if (videosToStore.length > 0) {
+        const insertedVideos = await databaseService.batchInsertVideosFiltered(videosToStore, 100)
         result.videosSynced = insertedVideos.length
       }
 
-      result.channelsSynced = batchResult.totalProcessed
-      result.errors.push(...batchResult.errors.map(e => e.message))
+      // Count unique channels
+      const uniqueChannels = new Set(videos.map(v => v.snippet.channelId))
+      result.channelsSynced = uniqueChannels.size
 
       // Update user's last sync time
       await databaseService.updateUserLastSync(userId)
 
-      console.log(`Synced ${result.videosSynced} videos from ${result.channelsSynced} channels for user ${userId}`)
+      console.log(`Efficiently synced ${result.videosSynced} videos from ${result.channelsSynced} channels using activities API`)
       
     } catch (error) {
       const apiError = handleAPIError(error)
