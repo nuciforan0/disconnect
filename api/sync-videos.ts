@@ -212,88 +212,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
-  // Check if we're likely to hit quota limits and provide mock data instead
-  const currentHour = new Date().getHours()
-  const isPacificNight = currentHour >= 0 && currentHour <= 8 // Likely quota reset time
-  
-  if (!isPacificNight) {
-    console.log(`Quota likely exhausted, providing mock subscription videos for user ${userId}`)
-    
-    // Create mock videos based on channels from your actual subscription list
-    const mockSubscriptionVideos = [
-      {
-        id: `quota-${Date.now()}-1`,
-        user_id: userId,
-        video_id: `quota-vid-${Date.now()}-1`,
-        channel_id: 'UCR1D15p_vdP3HkrH8wgjQRw',
-        channel_name: 'Internet Historian',
-        title: 'The Cost of Concordia (Mock - API Quota Exhausted)',
-        thumbnail_url: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
-        published_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-        duration: '45:23',
-        created_at: new Date().toISOString()
-      },
-      {
-        id: `quota-${Date.now()}-2`,
-        user_id: userId,
-        video_id: `quota-vid-${Date.now()}-2`,
-        channel_id: 'UC6nSFpj9HTCZ5t-N3Rm3-HA',
-        channel_name: 'Vsauce',
-        title: 'What If Everyone Jumped At Once? (Mock - API Quota Exhausted)',
-        thumbnail_url: 'https://img.youtube.com/vi/jNQXAC9IVRw/maxresdefault.jpg',
-        published_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-        duration: '16:42',
-        created_at: new Date().toISOString()
-      },
-      {
-        id: `quota-${Date.now()}-3`,
-        user_id: userId,
-        video_id: `quota-vid-${Date.now()}-3`,
-        channel_id: 'UCsXVk37bltHxD1rDPwtNM8Q',
-        channel_name: 'Kurzgesagt – In a Nutshell',
-        title: 'What Happens If We Bring the Sun to Earth? (Mock - API Quota Exhausted)',
-        thumbnail_url: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
-        published_at: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
-        duration: '9:15',
-        created_at: new Date().toISOString()
-      },
-      {
-        id: `quota-${Date.now()}-4`,
-        user_id: userId,
-        video_id: `quota-vid-${Date.now()}-4`,
-        channel_id: 'UCBJycsmduvYEL83R_U4JriQ',
-        channel_name: 'Marques Brownlee',
-        title: 'iPhone 16 Pro Review: The Wait Was Worth It! (Mock - API Quota Exhausted)',
-        thumbnail_url: 'https://img.youtube.com/vi/jNQXAC9IVRw/maxresdefault.jpg',
-        published_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-        duration: '13:27',
-        created_at: new Date().toISOString()
-      },
-      {
-        id: `quota-${Date.now()}-5`,
-        user_id: userId,
-        video_id: `quota-vid-${Date.now()}-5`,
-        channel_id: 'UCK3kaNXbB57CLcyhtccV_yw',
-        channel_name: 'Jerma985',
-        title: 'Jerma Streams - The Sims 4 (Mock - API Quota Exhausted)',
-        thumbnail_url: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
-        published_at: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(),
-        duration: '2:34:12',
-        created_at: new Date().toISOString()
-      }
-    ]
-
-    storage.addVideos(mockSubscriptionVideos)
-    
-    return res.status(200).json({
-      success: true,
-      channelsSynced: 5,
-      videosSynced: mockSubscriptionVideos.length,
-      errors: ['Using mock data - YouTube API quota exhausted. Set up new project with $300 credits or wait until midnight PT.'],
-      quotaUsed: 0,
-      executionTime: 200
-    })
-  }
+  // RSS feeds use minimal quota, so we can always run the real sync now!
 
   try {
     console.log(`Starting YouTube subscription sync for user ${userId}`)
@@ -384,7 +303,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       quotaUsed: Math.ceil(allChannelIds.length / 50), // Only subscription API calls (1-2 total for 94 channels)
       executionTime: Date.now(),
       debug: {
-        totalActivities: uploadActivities.length,
+        totalRSSVideos: rssVideos.length,
+        totalChannelsChecked: allChannelIds.length,
         uniqueChannels: Array.from(uniqueChannels),
         publishedAfter,
         hasAccessToken: !!accessToken,
