@@ -1,4 +1,5 @@
 import { youtubeService } from './youtube'
+import { rssYouTubeService } from './rssYouTubeService'
 import { databaseService } from './database'
 import { batchProcessor } from './batchProcessor'
 import { quotaManager } from './quotaManager'
@@ -76,55 +77,54 @@ export class SyncService {
 
   async syncUserVideos(userId: string): Promise<SyncResult> {
     const startTime = Date.now()
-    const initialQuota = quotaManager.getQuotaUsage().used
     
     const result: SyncResult = {
       channelsSynced: 0,
       videosSynced: 0,
       errors: [],
-      quotaUsed: 0,
+      quotaUsed: 0, // RSS feeds use NO quota!
       executionTime: 0
     }
 
     try {
-      // Check quota before starting
-      if (!quotaManager.canPerformOperation('activities', 3)) {
-        throw new Error('Insufficient quota to sync videos')
+      // Get user's subscribed channels from database
+      const userChannels = await databaseService.getUserChannels(userId)
+      
+      if (userChannels.length === 0) {
+        console.log('No subscribed channels found for user')
+        return result
       }
+
+      console.log(`Fetching RSS feeds for ${userChannels.length} subscribed channels...`)
 
       // Always fetch videos from exactly the last 24 hours
       const exactlyOneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
 
-      // Use the efficient activities API to get all subscription videos at once
-      console.log('Fetching subscription feed using efficient activities API...')
-      const videos = await youtubeService.getAllSubscriptionVideos(
+      // Use RSS feeds to get recent videos (NO API quota cost!)
+      const channelIds = userChannels.map(ch => ch.channel_id)
+      const rssVideos = await rssYouTubeService.getMultipleChannelsVideos(
+        channelIds,
         exactlyOneDayAgo,
-        200 // Get up to 200 videos from the last 24h
+        15 // Process 15 channels concurrently
       )
 
-      console.log(`Found ${videos.length} videos from subscription feed`)
+      console.log(`Found ${rssVideos.length} videos from RSS feeds`)
 
-      if (videos.length === 0) {
-        console.log('No new videos found in subscription feed')
+      if (rssVideos.length === 0) {
+        console.log('No new videos found in RSS feeds')
         return result
       }
 
-      // Get user's channels to map channel names
-      const userChannels = await databaseService.getUserChannels(userId)
-      const channelMap = new Map(
-        userChannels.map(ch => [ch.channel_id, ch.channel_name])
-      )
-
       // Convert to database format
-      const videosToStore = videos.map(video => ({
+      const videosToStore = rssVideos.map(video => ({
         user_id: userId,
-        video_id: video.id,
-        channel_id: video.snippet.channelId,
-        channel_name: channelMap.get(video.snippet.channelId) || video.snippet.channelTitle,
-        title: video.snippet.title,
-        thumbnail_url: video.snippet.thumbnails?.medium?.url || video.snippet.thumbnails?.default?.url,
-        published_at: new Date(video.snippet.publishedAt),
-        duration: this.parseDuration(video.contentDetails?.duration),
+        video_id: video.videoId,
+        channel_id: video.channelId,
+        channel_name: video.channelName,
+        title: video.title,
+        thumbnail_url: video.thumbnailUrl,
+        published_at: new Date(video.publishedAt),
+        duration: undefined, // RSS doesn't provide duration
       }))
 
       // Batch insert videos
@@ -133,21 +133,20 @@ export class SyncService {
         result.videosSynced = insertedVideos.length
       }
 
-      // Count unique channels
-      const uniqueChannels = new Set(videos.map(v => v.snippet.channelId))
+      // Count unique channels that had videos
+      const uniqueChannels = new Set(rssVideos.map(v => v.channelId))
       result.channelsSynced = uniqueChannels.size
 
       // Update user's last sync time
       await databaseService.updateUserLastSync(userId)
 
-      console.log(`Efficiently synced ${result.videosSynced} videos from ${result.channelsSynced} channels using activities API`)
+      console.log(`RSS sync complete: ${result.videosSynced} videos from ${result.channelsSynced} channels (0 quota used!)`)
       
     } catch (error) {
       const apiError = handleAPIError(error)
-      result.errors.push(`Failed to sync videos: ${apiError.message}`)
-      console.error('Video sync error:', error)
+      result.errors.push(`Failed to sync videos via RSS: ${apiError.message}`)
+      console.error('RSS video sync error:', error)
     } finally {
-      result.quotaUsed = quotaManager.getQuotaUsage().used - initialQuota
       result.executionTime = Date.now() - startTime
     }
 

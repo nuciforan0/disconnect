@@ -46,64 +46,106 @@ const storage = {
   }
 }
 
-async function fetchSubscriptionFeed(accessToken: string, publishedAfter: string, pageToken?: string) {
-  // Use the efficient activities API - gets your entire subscription feed at once
-  const url = `https://www.googleapis.com/youtube/v3/activities?part=snippet,contentDetails&mine=true&maxResults=50&publishedAfter=${publishedAfter}${pageToken ? `&pageToken=${pageToken}` : ''}`
-  
-  console.log(`Calling efficient YouTube Activities API: ${url}`)
-  
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Accept': 'application/json'
+async function fetchChannelRSSFeed(channelId: string): Promise<any[]> {
+  try {
+    const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
+    console.log(`Fetching RSS feed: ${rssUrl}`)
+    
+    const response = await fetch(rssUrl)
+    
+    if (!response.ok) {
+      console.error(`RSS feed error for channel ${channelId}: ${response.status}`)
+      return []
     }
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error(`YouTube API error ${response.status}:`, errorText)
-    throw new Error(`YouTube API error: ${response.status} - ${errorText}`)
+    
+    const xmlText = await response.text()
+    return parseRSSFeed(xmlText, channelId)
+  } catch (error) {
+    console.error(`Failed to fetch RSS for channel ${channelId}:`, error)
+    return []
   }
-
-  const data = await response.json()
-  console.log(`YouTube Activities API response:`, {
-    kind: data.kind,
-    etag: data.etag,
-    pageInfo: data.pageInfo,
-    itemCount: data.items?.length || 0,
-    items: data.items?.map((item: any) => ({
-      type: item.snippet?.type,
-      title: item.snippet?.title,
-      channelTitle: item.snippet?.channelTitle,
-      publishedAt: item.snippet?.publishedAt
-    })) || []
-  })
-  
-  return data
 }
 
-async function getAllSubscriptionVideos(accessToken: string, publishedAfter: string) {
-  let allVideos: any[] = []
-  let nextPageToken = ''
+function parseRSSFeed(xmlText: string, channelId: string): any[] {
+  try {
+    // Simple XML parsing for Node.js environment
+    const videos: any[] = []
+    
+    // Extract video entries using regex (simple approach for server-side)
+    const entryMatches = xmlText.match(/<entry>[\s\S]*?<\/entry>/g) || []
+    
+    entryMatches.forEach(entryXml => {
+      try {
+        const videoIdMatch = entryXml.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)
+        const titleMatch = entryXml.match(/<title>([^<]+)<\/title>/)
+        const publishedMatch = entryXml.match(/<published>([^<]+)<\/published>/)
+        const authorMatch = entryXml.match(/<name>([^<]+)<\/name>/)
+        const thumbnailMatch = entryXml.match(/url="([^"]*mqdefault[^"]*)"/)
+        
+        if (videoIdMatch && titleMatch && publishedMatch) {
+          const videoId = videoIdMatch[1]
+          const title = titleMatch[1]
+          const publishedAt = publishedMatch[1]
+          const channelName = authorMatch ? authorMatch[1] : 'Unknown Channel'
+          const thumbnailUrl = thumbnailMatch ? thumbnailMatch[1] : `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
+          
+          videos.push({
+            videoId,
+            title,
+            channelId,
+            channelName,
+            publishedAt,
+            thumbnailUrl
+          })
+        }
+      } catch (error) {
+        console.warn(`Failed to parse RSS entry:`, error)
+      }
+    })
+    
+    return videos
+  } catch (error) {
+    console.error(`Failed to parse RSS feed for channel ${channelId}:`, error)
+    return []
+  }
+}
+
+async function getAllSubscriptionVideosViaRSS(channelIds: string[], publishedAfter: string) {
+  console.log(`Fetching RSS feeds for ${channelIds.length} channels...`)
   
-  do {
-    const data = await fetchSubscriptionFeed(accessToken, publishedAfter, nextPageToken)
+  const allVideos: any[] = []
+  const publishedAfterDate = new Date(publishedAfter)
+  
+  // Process channels in batches to avoid overwhelming the server
+  const batchSize = 10
+  for (let i = 0; i < channelIds.length; i += batchSize) {
+    const batch = channelIds.slice(i, i + batchSize)
     
-    // Filter for upload activities and extract video data
-    const uploadActivities = (data.items || []).filter((item: any) => item.snippet.type === 'upload')
-    allVideos.push(...uploadActivities)
+    const batchPromises = batch.map(channelId => fetchChannelRSSFeed(channelId))
+    const batchResults = await Promise.all(batchPromises)
     
-    nextPageToken = data.nextPageToken || ''
+    // Flatten and filter by date
+    batchResults.forEach(channelVideos => {
+      const recentVideos = channelVideos.filter(video => 
+        new Date(video.publishedAt) > publishedAfterDate
+      )
+      allVideos.push(...recentVideos)
+    })
     
-    console.log(`Fetched ${uploadActivities.length} upload activities, total so far: ${allVideos.length}`)
+    console.log(`Processed RSS batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(channelIds.length / batchSize)}`)
     
-    // Add delay between pagination requests
-    if (nextPageToken) {
-      await new Promise(resolve => setTimeout(resolve, 100))
+    // Small delay between batches
+    if (i + batchSize < channelIds.length) {
+      await new Promise(resolve => setTimeout(resolve, 200))
     }
-    
-  } while (nextPageToken)
+  }
   
+  // Sort by published date (newest first)
+  allVideos.sort((a, b) => 
+    new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+  )
+  
+  console.log(`RSS sync complete: ${allVideos.length} videos from ${channelIds.length} channels`)
   return allVideos
 }
 
@@ -262,47 +304,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     console.log(`Looking for videos published after: ${publishedAfter}`)
     
-    // Try the efficient activities API first
-    console.log(`Fetching subscription feed using efficient activities API since ${publishedAfter}`)
-    const uploadActivities = await getAllSubscriptionVideos(accessToken, publishedAfter)
+    // Get user's subscribed channels first (this requires 1 API call)
+    console.log('Fetching user subscriptions to get channel list...')
+    const allChannelIds: string[] = []
+    let nextPageToken = ''
     
-    console.log(`Found ${uploadActivities.length} upload activities from subscription feed`)
-    
-    let allVideos: Video[] = []
-    const errors: string[] = []
-    const uniqueChannels = new Set<string>()
-    
-    if (uploadActivities.length > 0) {
-      // Convert activities to our video format
-      const formattedVideos = uploadActivities.map((activity: any) => {
-        const videoId = activity.contentDetails?.upload?.videoId
-        const channelId = activity.snippet.channelId
-        const channelName = activity.snippet.channelTitle
-        
-        uniqueChannels.add(channelId)
-        
-        return {
-          id: `yt-${videoId}`,
-          user_id: userId,
-          video_id: videoId,
-          channel_id: channelId,
-          channel_name: channelName,
-          title: activity.snippet.title,
-          thumbnail_url: activity.snippet.thumbnails?.medium?.url || activity.snippet.thumbnails?.default?.url,
-          published_at: activity.snippet.publishedAt,
-          duration: 'Unknown', // Would need additional API call to get duration
-          created_at: new Date().toISOString()
-        }
-      })
-      
-      allVideos = formattedVideos
-      console.log(`Efficiently synced ${allVideos.length} videos from ${uniqueChannels.size} channels using activities API`)
-    } else {
-      // Fallback: Activities API returned no results, try a more targeted approach
-      console.log('Activities API returned no results, trying fallback method with recent subscriptions...')
-      
-      // Get a few recent subscriptions and check them individually (limited to avoid quota issues)
-      const subscriptionsUrl = `https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=10&order=relevance`
+    do {
+      const subscriptionsUrl = `https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=50${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
       
       const subsResponse = await fetch(subscriptionsUrl, {
         headers: {
@@ -311,62 +319,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       })
       
-      if (subsResponse.ok) {
-        const subsData = await subsResponse.json()
-        const recentChannels = subsData.items || []
-        
-        console.log(`Checking ${recentChannels.length} most relevant subscriptions for recent uploads`)
-        
-        // Check a few channels for recent uploads (limit to 5 to stay efficient)
-        const channelsToCheck = recentChannels.slice(0, 5)
-        
-        for (const channel of channelsToCheck) {
-          try {
-            const channelId = channel.snippet.resourceId.channelId
-            const channelName = channel.snippet.title
-            
-            const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&publishedAfter=${publishedAfter}&maxResults=5`
-            
-            const searchResponse = await fetch(searchUrl, {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Accept': 'application/json'
-              }
-            })
-            
-            if (searchResponse.ok) {
-              const searchData = await searchResponse.json()
-              const videos = searchData.items || []
-              
-              const formattedVideos = videos.map((video: any) => ({
-                id: `yt-${video.id.videoId}`,
-                user_id: userId,
-                video_id: video.id.videoId,
-                channel_id: channelId,
-                channel_name: channelName,
-                title: video.snippet.title,
-                thumbnail_url: video.snippet.thumbnails?.medium?.url || video.snippet.thumbnails?.default?.url,
-                published_at: video.snippet.publishedAt,
-                duration: 'Unknown',
-                created_at: new Date().toISOString()
-              }))
-              
-              allVideos.push(...formattedVideos)
-              uniqueChannels.add(channelId)
-              
-              console.log(`Found ${formattedVideos.length} videos from ${channelName}`)
-            }
-            
-            // Small delay to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 100))
-            
-          } catch (error) {
-            console.error(`Error checking channel:`, error)
-          }
-        }
-        
-        console.log(`Fallback method found ${allVideos.length} videos from ${uniqueChannels.size} channels`)
+      if (!subsResponse.ok) {
+        throw new Error(`Failed to fetch subscriptions: ${subsResponse.status}`)
       }
+      
+      const subsData = await subsResponse.json()
+      const channels = subsData.items || []
+      
+      channels.forEach((channel: any) => {
+        allChannelIds.push(channel.snippet.resourceId.channelId)
+      })
+      
+      nextPageToken = subsData.nextPageToken || ''
+      console.log(`Fetched ${channels.length} subscriptions, total: ${allChannelIds.length}`)
+      
+      if (nextPageToken) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    } while (nextPageToken)
+    
+    console.log(`Found ${allChannelIds.length} subscribed channels, now fetching RSS feeds...`)
+    
+    // Use RSS feeds to get recent videos (NO additional API quota cost!)
+    const rssVideos = await getAllSubscriptionVideosViaRSS(allChannelIds, publishedAfter)
+    
+    let allVideos: Video[] = []
+    const errors: string[] = []
+    const uniqueChannels = new Set<string>()
+    
+    if (rssVideos.length > 0) {
+      // Convert RSS videos to our format
+      const formattedVideos = rssVideos.map((video: any) => {
+        uniqueChannels.add(video.channelId)
+        
+        return {
+          id: `rss-${video.videoId}`,
+          user_id: userId,
+          video_id: video.videoId,
+          channel_id: video.channelId,
+          channel_name: video.channelName,
+          title: video.title,
+          thumbnail_url: video.thumbnailUrl,
+          published_at: video.publishedAt,
+          duration: 'Unknown', // RSS doesn't provide duration
+          created_at: new Date().toISOString()
+        }
+      })
+      
+      allVideos = formattedVideos
+      console.log(`RSS sync complete: ${allVideos.length} videos from ${uniqueChannels.size} channels`)
+    } else {
+      console.log('No recent videos found in RSS feeds')
     }
     
     const channelsSynced = uniqueChannels.size
@@ -378,14 +381,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       channelsSynced,
       videosSynced: allVideos.length,
       errors,
-      quotaUsed: Math.ceil(allVideos.length / 50) + 1, // Activities API calls only (1-3 total)
+      quotaUsed: Math.ceil(allChannelIds.length / 50), // Only subscription API calls (1-2 total for 94 channels)
       executionTime: Date.now(),
       debug: {
         totalActivities: uploadActivities.length,
         uniqueChannels: Array.from(uniqueChannels),
         publishedAfter,
         hasAccessToken: !!accessToken,
-        method: 'efficient_activities_api'
+        method: 'rss_feeds_with_subscription_list'
       }
     }
     
