@@ -19,10 +19,10 @@ let videoStorage: Video[] = []
 
 // Access global storage
 if (typeof global !== 'undefined') {
-  if (!global.videoStorage) {
-    global.videoStorage = []
+  if (!(global as any).videoStorage) {
+    (global as any).videoStorage = []
   }
-  videoStorage = global.videoStorage
+  videoStorage = (global as any).videoStorage
 }
 
 const storage = {
@@ -39,54 +39,20 @@ const storage = {
     
     // Update global storage
     if (typeof global !== 'undefined') {
-      global.videoStorage = videoStorage
+      (global as any).videoStorage = videoStorage
     }
     
     console.log(`Storage now contains ${videoStorage.length} total videos`)
   }
 }
 
-async function fetchAllYouTubeSubscriptions(accessToken: string) {
-  let allChannels: any[] = []
-  let nextPageToken = ''
+async function fetchSubscriptionFeed(accessToken: string, publishedAfter: string, pageToken?: string) {
+  // Use the efficient activities API - gets your entire subscription feed at once
+  const url = `https://www.googleapis.com/youtube/v3/activities?part=snippet,contentDetails&mine=true&maxResults=50&publishedAfter=${publishedAfter}${pageToken ? `&pageToken=${pageToken}` : ''}`
   
-  do {
-    const url = `https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=50${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
-    
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/json'
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error(`YouTube API error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    allChannels.push(...(data.items || []))
-    nextPageToken = data.nextPageToken || ''
-    
-    console.log(`Fetched ${data.items?.length || 0} subscriptions, total so far: ${allChannels.length}`)
-    
-    // Add delay between pagination requests
-    if (nextPageToken) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
-    
-  } while (nextPageToken)
+  console.log(`Calling efficient YouTube Activities API: ${url}`)
   
-  return { items: allChannels }
-}
-
-async function fetchChannelVideos(channelId: string, accessToken: string, publishedAfter: string) {
-  // First try the search API
-  const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&publishedAfter=${publishedAfter}&maxResults=10`
-  
-  console.log(`Calling YouTube API: ${searchUrl}`)
-  
-  const response = await fetch(searchUrl, {
+  const response = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Accept': 'application/json'
@@ -100,7 +66,7 @@ async function fetchChannelVideos(channelId: string, accessToken: string, publis
   }
 
   const data = await response.json()
-  console.log(`YouTube API response:`, {
+  console.log(`YouTube Activities API response:`, {
     kind: data.kind,
     etag: data.etag,
     pageInfo: data.pageInfo,
@@ -108,6 +74,31 @@ async function fetchChannelVideos(channelId: string, accessToken: string, publis
   })
   
   return data
+}
+
+async function getAllSubscriptionVideos(accessToken: string, publishedAfter: string) {
+  let allVideos: any[] = []
+  let nextPageToken = ''
+  
+  do {
+    const data = await fetchSubscriptionFeed(accessToken, publishedAfter, nextPageToken)
+    
+    // Filter for upload activities and extract video data
+    const uploadActivities = (data.items || []).filter((item: any) => item.snippet.type === 'upload')
+    allVideos.push(...uploadActivities)
+    
+    nextPageToken = data.nextPageToken || ''
+    
+    console.log(`Fetched ${uploadActivities.length} upload activities, total so far: ${allVideos.length}`)
+    
+    // Add delay between pagination requests
+    if (nextPageToken) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+  } while (nextPageToken)
+  
+  return allVideos
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -265,69 +256,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     console.log(`Looking for videos published after: ${publishedAfter}`)
     
-    // Get user's subscriptions (all pages)
-    console.log(`Fetching ALL subscriptions with publishedAfter: ${publishedAfter}`)
-    const subscriptionsData = await fetchAllYouTubeSubscriptions(accessToken)
-    const channels = subscriptionsData.items || []
+    // Use the efficient activities API to get all subscription videos at once
+    console.log(`Fetching subscription feed using efficient activities API since ${publishedAfter}`)
+    const uploadActivities = await getAllSubscriptionVideos(accessToken, publishedAfter)
     
-    console.log(`Found ${channels.length} total subscribed channels`)
-    console.log(`Processing ALL ${channels.length} channels:`, channels.map(c => c.snippet.title))
+    console.log(`Found ${uploadActivities.length} upload activities from subscription feed`)
     
     let allVideos: Video[] = []
-    let channelsSynced = 0
     const errors: string[] = []
+    const uniqueChannels = new Set<string>()
     
-    // Fetch videos from a limited number of channels to stay within quota
-    // Prioritize channels that are more likely to have uploaded recently
-    const channelsToCheck = channels.slice(0, 20) // Limit to 20 channels to stay within quota
-    
-    console.log(`Limiting to first ${channelsToCheck.length} channels to stay within API quota`)
-    
-    for (const channel of channelsToCheck) {
-      try {
-        const channelId = channel.snippet.resourceId.channelId
-        const channelName = channel.snippet.title
-        
-        console.log(`Fetching videos from ${channelName} (${channelId}) since ${publishedAfter}`)
-        
-        const videosData = await fetchChannelVideos(channelId, accessToken, publishedAfter)
-        const videos = videosData.items || []
-        
-        console.log(`Raw API response for ${channelName}:`, {
-          totalResults: videosData.pageInfo?.totalResults || 0,
-          resultsPerPage: videosData.pageInfo?.resultsPerPage || 0,
-          itemCount: videos.length,
-          firstVideoTitle: videos[0]?.snippet?.title || 'No videos'
-        })
-        
-        // Convert to our format
-        const formattedVideos = videos.map((video: any) => ({
-          id: `yt-${video.id.videoId}`,
-          user_id: userId,
-          video_id: video.id.videoId,
-          channel_id: channelId,
-          channel_name: channelName,
-          title: video.snippet.title,
-          thumbnail_url: video.snippet.thumbnails?.medium?.url || video.snippet.thumbnails?.default?.url,
-          published_at: video.snippet.publishedAt,
-          duration: 'Unknown', // Would need additional API call to get duration
-          created_at: new Date().toISOString()
-        }))
-        
-        allVideos.push(...formattedVideos)
-        channelsSynced++
-        
-        console.log(`Synced ${formattedVideos.length} videos from ${channelName}`)
-        
-        // Add delay to avoid rate limiting (longer delay for more channels)
-        await new Promise(resolve => setTimeout(resolve, 200))
-        
-      } catch (error) {
-        const errorMsg = `Failed to sync channel ${channel.snippet.title}: ${error instanceof Error ? error.message : 'Unknown error'}`
-        errors.push(errorMsg)
-        console.error(errorMsg)
+    // Convert activities to our video format
+    const formattedVideos = uploadActivities.map((activity: any) => {
+      const videoId = activity.contentDetails?.upload?.videoId
+      const channelId = activity.snippet.channelId
+      const channelName = activity.snippet.channelTitle
+      
+      uniqueChannels.add(channelId)
+      
+      return {
+        id: `yt-${videoId}`,
+        user_id: userId,
+        video_id: videoId,
+        channel_id: channelId,
+        channel_name: channelName,
+        title: activity.snippet.title,
+        thumbnail_url: activity.snippet.thumbnails?.medium?.url || activity.snippet.thumbnails?.default?.url,
+        published_at: activity.snippet.publishedAt,
+        duration: 'Unknown', // Would need additional API call to get duration
+        created_at: new Date().toISOString()
       }
-    }
+    })
+    
+    allVideos = formattedVideos
+    const channelsSynced = uniqueChannels.size
+    
+    console.log(`Efficiently synced ${allVideos.length} videos from ${channelsSynced} channels using activities API`)
     
     // Add videos to storage (avoiding duplicates)
     storage.addVideos(allVideos)
@@ -336,13 +300,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       channelsSynced,
       videosSynced: allVideos.length,
       errors,
-      quotaUsed: channelsSynced * 2, // Rough estimate
+      quotaUsed: Math.ceil(allVideos.length / 50) + 1, // Activities API calls only (1-3 total)
       executionTime: Date.now(),
       debug: {
-        totalSubscriptions: channels.length,
-        processedChannels: channels.map(c => c.snippet.title),
+        totalActivities: uploadActivities.length,
+        uniqueChannels: Array.from(uniqueChannels),
         publishedAfter,
-        hasAccessToken: !!accessToken
+        hasAccessToken: !!accessToken,
+        method: 'efficient_activities_api'
       }
     }
     

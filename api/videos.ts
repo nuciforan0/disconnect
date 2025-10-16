@@ -45,10 +45,10 @@ let videoStorage: Video[] = [
 
 // Make storage globally accessible
 if (typeof global !== 'undefined') {
-  if (!global.videoStorage) {
-    global.videoStorage = videoStorage
+  if (!(global as any).videoStorage) {
+    (global as any).videoStorage = videoStorage
   } else {
-    videoStorage = global.videoStorage
+    videoStorage = (global as any).videoStorage
   }
 }
 
@@ -67,7 +67,7 @@ const storage = {
       }
     })
     if (typeof global !== 'undefined') {
-      global.videoStorage = videoStorage
+      (global as any).videoStorage = videoStorage
     }
   },
 
@@ -77,7 +77,7 @@ const storage = {
       !(video.user_id === userId && video.video_id === videoId)
     )
     if (typeof global !== 'undefined') {
-      global.videoStorage = videoStorage
+      (global as any).videoStorage = videoStorage
     }
     return videoStorage.length < initialLength
   }
