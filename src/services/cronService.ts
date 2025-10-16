@@ -8,8 +8,7 @@ interface CronSyncResult {
 }
 
 export class CronService {
-  private readonly SYNC_HOUR = 8 // 8 AM AEDT
-  private readonly AEDT_OFFSET = 11 // AEDT is UTC+11
+  // Cron job runs at 22:00 UTC (10 PM UTC = 8 AM AEST next day)
 
   async triggerManualSync(): Promise<CronSyncResult> {
     try {
