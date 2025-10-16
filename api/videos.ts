@@ -94,6 +94,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
       
       console.log(`Videos API: Found ${userVideos.length} videos for user ${userId}`)
+      console.log(`Videos API: Total videos in storage: ${videoStorage.length}`)
+      console.log(`Videos API: All user IDs in storage:`, [...new Set(videoStorage.map(v => v.user_id))])
       
       const paginatedVideos = userVideos.slice(offset, offset + limit)
       const hasMore = offset + limit < userVideos.length

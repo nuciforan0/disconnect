@@ -294,7 +294,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const channelsSynced = uniqueChannels.size
     
     // Add videos to storage (avoiding duplicates)
+    console.log(`Sync API: About to store ${allVideos.length} videos for user ${userId}`)
     storage.addVideos(allVideos)
+    console.log(`Sync API: Storage now has ${videoStorage.length} total videos`)
     
     const result = {
       channelsSynced,
