@@ -1,5 +1,4 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { videoStorage } from '../lib/storage'
 
 // Simple in-memory storage for development
 interface Video {
@@ -13,6 +12,30 @@ interface Video {
   published_at: string;
   duration: string;
   created_at: string;
+}
+
+// Shared global storage that persists across function calls within the same instance
+const getVideoStorage = () => {
+  if (!(global as any).sharedVideoStorage) {
+    (global as any).sharedVideoStorage = []
+  }
+  return (global as any).sharedVideoStorage as Video[]
+}
+
+const storage = {
+  addVideos: (videos: Video[]): void => {
+    const storageArray = getVideoStorage()
+    videos.forEach(video => {
+      const exists = storageArray.some(v => 
+        v.user_id === video.user_id && v.video_id === video.video_id
+      )
+      if (!exists) {
+        storageArray.push(video)
+        console.log(`Storage: Added video ${video.title} for user ${video.user_id}`)
+      }
+    })
+    console.log(`Storage: Total videos: ${storageArray.length}`)
+  }
 }
 
 async function fetchChannelRSSFeed(channelId: string): Promise<any[]> {
@@ -169,7 +192,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     ]
 
-    await videoStorage.addVideos(mockSyncedVideos)
+    storage.addVideos(mockSyncedVideos)
     
     return res.status(200).json({
       success: true,
@@ -264,8 +287,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Add videos to storage (avoiding duplicates)
     console.log(`Sync API: About to store ${allVideos.length} videos for user ${userId}`)
-    await videoStorage.addVideos(allVideos)
-    const allStoredVideos = await videoStorage.getAllVideos()
+    storage.addVideos(allVideos)
+    const allStoredVideos = getVideoStorage()
     console.log(`Sync API: Storage now has ${allStoredVideos.length} total videos`)
     
     const result = {
