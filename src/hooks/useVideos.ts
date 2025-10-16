@@ -157,7 +157,7 @@ export function useSyncVideos() {
       
       toast.success(
         'Videos synced successfully',
-        `Found ${result.videosSynced} new videos from ${result.channelsSynced} channels (no shorts!)${debugInfo}${errorInfo}`
+        `Found ${result.videosSynced} new videos from ${result.channelsSynced} channels (2.5+ min only!)${debugInfo}${errorInfo}`
       )
       
       // If sync returned videos, update the cache directly

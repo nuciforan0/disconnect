@@ -35,20 +35,17 @@ export class CronService {
   getNextSyncTime(): Date {
     const now = new Date()
     
-    // Convert current time to AEDT
-    const aedtNow = new Date(now.getTime() + (this.AEDT_OFFSET * 60 * 60 * 1000))
+    // Create next sync time at 8 AM AEDT (which is 10 PM UTC the previous day, or 9 PM during DST)
+    // For simplicity, we'll use 10 PM UTC (22:00) which corresponds to 8 AM AEST
+    const nextSync = new Date()
+    nextSync.setUTCHours(22, 0, 0, 0) // 10 PM UTC = 8 AM AEST next day
     
-    // Create next sync time at 8 AM AEDT
-    const nextSync = new Date(aedtNow)
-    nextSync.setHours(this.SYNC_HOUR, 0, 0, 0)
-    
-    // If we've already passed 8 AM today, set it for tomorrow
-    if (aedtNow.getHours() >= this.SYNC_HOUR) {
-      nextSync.setDate(nextSync.getDate() + 1)
+    // If we've already passed 10 PM UTC today, set it for tomorrow
+    if (now.getUTCHours() >= 22) {
+      nextSync.setUTCDate(nextSync.getUTCDate() + 1)
     }
     
-    // Convert back to local time
-    return new Date(nextSync.getTime() - (this.AEDT_OFFSET * 60 * 60 * 1000))
+    return nextSync
   }
 
   getTimeUntilNextSync(): string {

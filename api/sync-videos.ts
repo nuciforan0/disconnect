@@ -182,7 +182,7 @@ async function getVideoDurations(videoIds: string[], accessToken: string): Promi
           if (!isShort) {
             durations[item.id] = duration
           } else {
-            console.log(`Filtered out YouTube Short: ${item.id} (${duration})`)
+            console.log(`Filtered out short video (≤2.5min): ${item.id} (${duration})`)
           }
         })
       }
@@ -217,7 +217,7 @@ function parseDuration(duration: string): string {
 }
 
 function isVideoShort(duration: string): boolean {
-  // YouTube Shorts are typically 60 seconds or less
+  // Filter out videos 2.5 minutes (150 seconds) or shorter
   const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
   if (!match) return false
   
@@ -227,8 +227,8 @@ function isVideoShort(duration: string): boolean {
   
   const totalSeconds = hours * 3600 + minutes * 60 + seconds
   
-  // Filter out videos 60 seconds or shorter (YouTube Shorts)
-  return totalSeconds <= 60
+  // Filter out videos 2.5 minutes (150 seconds) or shorter
+  return totalSeconds <= 150
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

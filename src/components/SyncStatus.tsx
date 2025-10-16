@@ -41,7 +41,7 @@ export default function SyncStatus() {
         <h3 className="text-sm font-medium text-gray-900">Next Sync</h3>
         <div className="flex items-center">
           <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-          <span className="text-xs text-gray-500">Daily at 8 AM AEDT</span>
+          <span className="text-xs text-gray-500">Daily at 8 AM AEST</span>
         </div>
       </div>
       
