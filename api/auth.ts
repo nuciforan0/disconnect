@@ -10,7 +10,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (method === 'POST') {
     // Initiate Google OAuth flow
     const scopes = [
-      'https://www.googleapis.com/auth/youtube.readonly',
+      'https://www.googleapis.com/auth/youtube.force-ssl',
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile'
     ].join(' ')
