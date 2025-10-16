@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { serverDatabaseService } from './lib/database'
+// Database integration temporarily disabled due to Vercel import issues
 
 // Simple in-memory storage for development
 interface Video {
@@ -340,44 +340,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       allVideos = formattedVideos
       console.log(`RSS sync complete: ${allVideos.length} videos from ${uniqueChannels.size} channels`)
       
-      // Save videos to database AND in-memory storage
-      console.log(`Saving ${allVideos.length} videos to database...`)
-      
-      try {
-        // First, get or create user in database
-        const user = await serverDatabaseService.getOrCreateUser(
-          userId, 
-          'user@example.com', // You'll need to get real email from auth
-          accessToken,
-          'refresh_token_placeholder'
-        )
-        
-        // Prepare videos for database (convert published_at to proper format)
-        const videosToSave = allVideos.map(video => ({
-          user_id: user.id, // Use database user ID
-          video_id: video.video_id,
-          channel_id: video.channel_id,
-          channel_name: video.channel_name,
-          title: video.title,
-          thumbnail_url: video.thumbnail_url,
-          published_at: video.published_at, // Keep as ISO string for database
-          duration: video.duration
-        }))
-        
-        const savedVideos = await serverDatabaseService.batchInsertVideosFiltered(videosToSave)
-        console.log(`Successfully saved ${savedVideos.length} videos to database`)
-        
-        // Update user's last sync time
-        await serverDatabaseService.updateUserLastSync(user.id)
-        
-      } catch (error) {
-        console.error('Error saving videos to database:', error)
-        // Don't fail the sync if database save fails
-      }
-      
-      // Also save to in-memory storage as backup
+      // Save videos to in-memory storage (database integration coming later)
+      console.log(`Saving ${allVideos.length} videos to storage...`)
       storage.addVideos(allVideos)
-      console.log(`Also saved videos to in-memory storage`)
+      console.log(`Successfully saved videos to storage`)
     } else {
       console.log('No recent videos found in RSS feeds')
     }
