@@ -70,7 +70,13 @@ async function fetchSubscriptionFeed(accessToken: string, publishedAfter: string
     kind: data.kind,
     etag: data.etag,
     pageInfo: data.pageInfo,
-    itemCount: data.items?.length || 0
+    itemCount: data.items?.length || 0,
+    items: data.items?.map((item: any) => ({
+      type: item.snippet?.type,
+      title: item.snippet?.title,
+      channelTitle: item.snippet?.channelTitle,
+      publishedAt: item.snippet?.publishedAt
+    })) || []
   })
   
   return data
@@ -256,7 +262,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     console.log(`Looking for videos published after: ${publishedAfter}`)
     
-    // Use the efficient activities API to get all subscription videos at once
+    // Try the efficient activities API first
     console.log(`Fetching subscription feed using efficient activities API since ${publishedAfter}`)
     const uploadActivities = await getAllSubscriptionVideos(accessToken, publishedAfter)
     
@@ -266,32 +272,104 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const errors: string[] = []
     const uniqueChannels = new Set<string>()
     
-    // Convert activities to our video format
-    const formattedVideos = uploadActivities.map((activity: any) => {
-      const videoId = activity.contentDetails?.upload?.videoId
-      const channelId = activity.snippet.channelId
-      const channelName = activity.snippet.channelTitle
+    if (uploadActivities.length > 0) {
+      // Convert activities to our video format
+      const formattedVideos = uploadActivities.map((activity: any) => {
+        const videoId = activity.contentDetails?.upload?.videoId
+        const channelId = activity.snippet.channelId
+        const channelName = activity.snippet.channelTitle
+        
+        uniqueChannels.add(channelId)
+        
+        return {
+          id: `yt-${videoId}`,
+          user_id: userId,
+          video_id: videoId,
+          channel_id: channelId,
+          channel_name: channelName,
+          title: activity.snippet.title,
+          thumbnail_url: activity.snippet.thumbnails?.medium?.url || activity.snippet.thumbnails?.default?.url,
+          published_at: activity.snippet.publishedAt,
+          duration: 'Unknown', // Would need additional API call to get duration
+          created_at: new Date().toISOString()
+        }
+      })
       
-      uniqueChannels.add(channelId)
+      allVideos = formattedVideos
+      console.log(`Efficiently synced ${allVideos.length} videos from ${uniqueChannels.size} channels using activities API`)
+    } else {
+      // Fallback: Activities API returned no results, try a more targeted approach
+      console.log('Activities API returned no results, trying fallback method with recent subscriptions...')
       
-      return {
-        id: `yt-${videoId}`,
-        user_id: userId,
-        video_id: videoId,
-        channel_id: channelId,
-        channel_name: channelName,
-        title: activity.snippet.title,
-        thumbnail_url: activity.snippet.thumbnails?.medium?.url || activity.snippet.thumbnails?.default?.url,
-        published_at: activity.snippet.publishedAt,
-        duration: 'Unknown', // Would need additional API call to get duration
-        created_at: new Date().toISOString()
+      // Get a few recent subscriptions and check them individually (limited to avoid quota issues)
+      const subscriptionsUrl = `https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=10&order=relevance`
+      
+      const subsResponse = await fetch(subscriptionsUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json'
+        }
+      })
+      
+      if (subsResponse.ok) {
+        const subsData = await subsResponse.json()
+        const recentChannels = subsData.items || []
+        
+        console.log(`Checking ${recentChannels.length} most relevant subscriptions for recent uploads`)
+        
+        // Check a few channels for recent uploads (limit to 5 to stay efficient)
+        const channelsToCheck = recentChannels.slice(0, 5)
+        
+        for (const channel of channelsToCheck) {
+          try {
+            const channelId = channel.snippet.resourceId.channelId
+            const channelName = channel.snippet.title
+            
+            const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&publishedAfter=${publishedAfter}&maxResults=5`
+            
+            const searchResponse = await fetch(searchUrl, {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json'
+              }
+            })
+            
+            if (searchResponse.ok) {
+              const searchData = await searchResponse.json()
+              const videos = searchData.items || []
+              
+              const formattedVideos = videos.map((video: any) => ({
+                id: `yt-${video.id.videoId}`,
+                user_id: userId,
+                video_id: video.id.videoId,
+                channel_id: channelId,
+                channel_name: channelName,
+                title: video.snippet.title,
+                thumbnail_url: video.snippet.thumbnails?.medium?.url || video.snippet.thumbnails?.default?.url,
+                published_at: video.snippet.publishedAt,
+                duration: 'Unknown',
+                created_at: new Date().toISOString()
+              }))
+              
+              allVideos.push(...formattedVideos)
+              uniqueChannels.add(channelId)
+              
+              console.log(`Found ${formattedVideos.length} videos from ${channelName}`)
+            }
+            
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100))
+            
+          } catch (error) {
+            console.error(`Error checking channel:`, error)
+          }
+        }
+        
+        console.log(`Fallback method found ${allVideos.length} videos from ${uniqueChannels.size} channels`)
       }
-    })
+    }
     
-    allVideos = formattedVideos
     const channelsSynced = uniqueChannels.size
-    
-    console.log(`Efficiently synced ${allVideos.length} videos from ${channelsSynced} channels using activities API`)
     
     // Add videos to storage (avoiding duplicates)
     storage.addVideos(allVideos)
