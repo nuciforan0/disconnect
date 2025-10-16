@@ -1,4 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
+import { databaseService } from '../src/services/database'
 
 // Simple in-memory storage for development
 interface Video {
@@ -97,20 +98,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // TODO: Replace with actual database query
       // const videos = await databaseService.getUserVideos(userId, limit, offset)
       
-      // Use shared storage and sort by published date (newest first)
-      const userVideos = storage.getVideos(userId)
-        .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+      // Try database first, fallback to in-memory storage
+      let userVideos: any[] = []
+      let totalCount = 0
       
-      const allVideos = storage.getAllVideos()
-      console.log(`Videos API: Found ${userVideos.length} videos for user ${userId}`)
-      console.log(`Videos API: Total videos in storage: ${allVideos.length}`)
-      console.log(`Videos API: All user IDs in storage:`, [...new Set(allVideos.map(v => v.user_id))])
+      try {
+        // Get videos from database
+        const dbVideos = await databaseService.getUserVideos(userId, limit, offset)
+        totalCount = await databaseService.getVideoCount(userId)
+        
+        userVideos = dbVideos.map(video => ({
+          id: video.id,
+          user_id: video.user_id,
+          video_id: video.video_id,
+          channel_id: video.channel_id,
+          channel_name: video.channel_name,
+          title: video.title,
+          thumbnail_url: video.thumbnail_url,
+          published_at: video.published_at,
+          duration: video.duration,
+          created_at: video.created_at
+        }))
+        
+        console.log(`Videos API: Found ${userVideos.length} videos from database for user ${userId}`)
+      } catch (error) {
+        console.error('Database error, falling back to in-memory storage:', error)
+        
+        // Fallback to in-memory storage
+        const memoryVideos = storage.getVideos(userId)
+          .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+        
+        userVideos = memoryVideos.slice(offset, offset + limit)
+        totalCount = memoryVideos.length
+        
+        console.log(`Videos API: Found ${userVideos.length} videos from memory for user ${userId}`)
+      }
       
-      const paginatedVideos = userVideos.slice(offset, offset + limit)
-      const hasMore = offset + limit < userVideos.length
+      const hasMore = offset + limit < totalCount
 
       // Format response
-      const formattedVideos = paginatedVideos.map(video => ({
+      const formattedVideos = userVideos.map(video => ({
         id: video.id,
         videoId: video.video_id,
         channelId: video.channel_id,
@@ -124,7 +151,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json({
         videos: formattedVideos,
         hasMore,
-        total: userVideos.length
+        total: totalCount
       })
     } catch (error) {
       console.error('Error fetching videos:', error)
@@ -142,8 +169,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // TODO: Replace with actual database deletion
       // await databaseService.deleteVideo(userId, videoId)
       
-      // Remove from shared storage
-      storage.deleteVideo(userId, videoId)
+      // Try database first, fallback to in-memory storage
+      try {
+        await databaseService.deleteVideo(userId, videoId)
+        console.log(`Deleted video ${videoId} from database for user ${userId}`)
+      } catch (error) {
+        console.error('Database delete error, falling back to memory:', error)
+        storage.deleteVideo(userId, videoId)
+        console.log(`Deleted video ${videoId} from memory for user ${userId}`)
+      }
       
       console.log(`Deleted video ${videoId} for user ${userId}`)
 
