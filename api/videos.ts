@@ -1,6 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
-// Database service import - temporarily disabled for Vercel deployment
-// import { databaseService } from '../src/services/database'
+import { serverDatabaseService } from './lib/database'
 
 // Simple in-memory storage for development
 interface Video {
@@ -99,15 +98,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // TODO: Replace with actual database query
       // const videos = await databaseService.getUserVideos(userId, limit, offset)
       
-      // Use in-memory storage for now (database integration coming later)
-      const memoryVideos = storage.getVideos(userId)
-        .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+      // Try database first, fallback to in-memory storage
+      let userVideos: any[] = []
+      let totalCount = 0
       
-      const userVideos = memoryVideos.slice(offset, offset + limit)
-      const totalCount = memoryVideos.length
-      
-      console.log(`Videos API: Found ${userVideos.length} videos from memory for user ${userId}`)
-      console.log(`Videos API: Total videos in storage: ${memoryVideos.length}`)
+      try {
+        // Get user from database by Google ID (userId is Google ID)
+        const user = await serverDatabaseService.getUserByGoogleId(userId)
+        
+        if (user) {
+          // Get videos from database
+          const dbVideos = await serverDatabaseService.getUserVideos(user.id, limit, offset)
+          totalCount = await serverDatabaseService.getVideoCount(user.id)
+          
+          userVideos = dbVideos
+          console.log(`Videos API: Found ${userVideos.length} videos from database for user ${userId}`)
+        } else {
+          console.log(`Videos API: User ${userId} not found in database, using memory storage`)
+          throw new Error('User not found in database')
+        }
+      } catch (error) {
+        console.error('Database error, falling back to in-memory storage:', error)
+        
+        // Fallback to in-memory storage
+        const memoryVideos = storage.getVideos(userId)
+          .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+        
+        userVideos = memoryVideos.slice(offset, offset + limit)
+        totalCount = memoryVideos.length
+        
+        console.log(`Videos API: Found ${userVideos.length} videos from memory for user ${userId}`)
+      }
       
       const hasMore = offset + limit < totalCount
 
@@ -144,9 +165,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // TODO: Replace with actual database deletion
       // await databaseService.deleteVideo(userId, videoId)
       
-      // Remove from in-memory storage
-      storage.deleteVideo(userId, videoId)
-      console.log(`Deleted video ${videoId} from memory for user ${userId}`)
+      // Try database first, fallback to in-memory storage
+      try {
+        // Get user from database by Google ID
+        const user = await serverDatabaseService.getUserByGoogleId(userId)
+        
+        if (user) {
+          await serverDatabaseService.deleteVideo(user.id, videoId)
+          console.log(`Deleted video ${videoId} from database for user ${userId}`)
+        } else {
+          throw new Error('User not found in database')
+        }
+      } catch (error) {
+        console.error('Database delete error, falling back to memory:', error)
+        storage.deleteVideo(userId, videoId)
+        console.log(`Deleted video ${videoId} from memory for user ${userId}`)
+      }
       
       console.log(`Deleted video ${videoId} for user ${userId}`)
 
