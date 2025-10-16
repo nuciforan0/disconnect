@@ -81,12 +81,12 @@ class ApiService {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
 
-  async getVideos(limit = 50, offset = 0) {
+  async getVideos(limit = 50, offset = 0, userId?: string) {
     try {
       const params = new URLSearchParams({
         limit: limit.toString(),
         offset: offset.toString(),
-        userId: 'user1' // TODO: Get from auth context
+        userId: userId || 'user1' // Fallback for development
       })
       
       return await this.request(`/videos?${params}`, undefined, {
@@ -98,11 +98,11 @@ class ApiService {
     }
   }
 
-  async deleteVideo(videoId: string) {
+  async deleteVideo(videoId: string, userId?: string) {
     try {
       const params = new URLSearchParams({
         videoId: videoId,
-        userId: 'user1' // TODO: Get from auth context
+        userId: userId || 'user1' // Fallback for development
       })
       
       return await this.request(`/videos?${params}`, {

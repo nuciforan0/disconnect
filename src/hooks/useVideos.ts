@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiService } from '../services/api'
 import { useToastContext } from '../contexts/ToastContext'
+import { useAuthStore } from '../store/authStore'
 import { handleAPIError, getErrorMessage } from '../lib/errorHandler'
 
 interface Video {
@@ -21,12 +22,13 @@ interface VideoFeedResponse {
 
 export function useVideos(limit = 50, offset = 0) {
   const toast = useToastContext()
+  const { user } = useAuthStore()
 
   return useQuery({
-    queryKey: ['videos', limit, offset],
+    queryKey: ['videos', limit, offset, user?.id],
     queryFn: async (): Promise<VideoFeedResponse> => {
       try {
-        const response = await apiService.getVideos(limit, offset)
+        const response = await apiService.getVideos(limit, offset, user?.id)
         return response as VideoFeedResponse
       } catch (error) {
         const apiError = handleAPIError(error)
@@ -67,11 +69,12 @@ export function useVideos(limit = 50, offset = 0) {
 export function useDeleteVideo() {
   const queryClient = useQueryClient()
   const toast = useToastContext()
+  const { user } = useAuthStore()
 
   return useMutation({
     mutationFn: async (videoId: string) => {
       try {
-        await apiService.deleteVideo(videoId)
+        await apiService.deleteVideo(videoId, user?.id)
       } catch (error) {
         const apiError = handleAPIError(error)
 
@@ -168,12 +171,13 @@ export function useSyncVideos() {
 
 export function useInfiniteVideos(limit = 20) {
   const toast = useToastContext()
+  const { user } = useAuthStore()
 
   return useQuery({
-    queryKey: ['videos', 'infinite'],
+    queryKey: ['videos', 'infinite', user?.id],
     queryFn: async (): Promise<Video[]> => {
       try {
-        const response = await apiService.getVideos(limit, 0)
+        const response = await apiService.getVideos(limit, 0, user?.id)
         return (response as VideoFeedResponse).videos
       } catch (error) {
         const apiError = handleAPIError(error)

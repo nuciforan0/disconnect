@@ -14,42 +14,15 @@ interface Video {
   created_at: string;
 }
 
-// Simple global storage (will reset on function restart, but good for testing)
-let videoStorage: Video[] = [
-  // Start with some sample videos so you can test the delete functionality
-  {
-    id: 'sample-1',
-    user_id: 'user1',
-    video_id: 'sample-vid-1',
-    channel_id: 'UC_sample_1',
-    channel_name: 'Tech Channel',
-    title: 'Sample Tech Video - You can delete this',
-    thumbnail_url: 'https://img.youtube.com/vi/dQw4w9WgXcQ/maxresdefault.jpg',
-    published_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    duration: '10:30',
-    created_at: new Date().toISOString()
-  },
-  {
-    id: 'sample-2',
-    user_id: 'user1',
-    video_id: 'sample-vid-2',
-    channel_id: 'UC_sample_2',
-    channel_name: 'Gaming Channel',
-    title: 'Sample Gaming Video - You can delete this too',
-    thumbnail_url: 'https://img.youtube.com/vi/jNQXAC9IVRw/maxresdefault.jpg',
-    published_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-    duration: '15:45',
-    created_at: new Date().toISOString()
-  }
-]
+// Use the same global storage as sync-videos API
+let videoStorage: Video[] = []
 
-// Make storage globally accessible
+// Access the shared global storage
 if (typeof global !== 'undefined') {
   if (!(global as any).videoStorage) {
-    (global as any).videoStorage = videoStorage
-  } else {
-    videoStorage = (global as any).videoStorage
+    (global as any).videoStorage = []
   }
+  videoStorage = (global as any).videoStorage
 }
 
 const storage = {
@@ -116,8 +89,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // TODO: Replace with actual database query
       // const videos = await databaseService.getUserVideos(userId, limit, offset)
       
-      // Use shared storage
+      // Use shared storage and sort by published date (newest first)
       const userVideos = storage.getVideos(userId)
+        .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+      
+      console.log(`Videos API: Found ${userVideos.length} videos for user ${userId}`)
+      
       const paginatedVideos = userVideos.slice(offset, offset + limit)
       const hasMore = offset + limit < userVideos.length
 
