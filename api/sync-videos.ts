@@ -176,7 +176,14 @@ async function getVideoDurations(videoIds: string[], accessToken: string): Promi
       if (response.ok) {
         const data = await response.json()
         data.items?.forEach((item: any) => {
-          durations[item.id] = parseDuration(item.contentDetails.duration)
+          const duration = parseDuration(item.contentDetails.duration)
+          // Filter out YouTube Shorts (videos under 61 seconds)
+          const isShort = isVideoShort(item.contentDetails.duration)
+          if (!isShort) {
+            durations[item.id] = duration
+          } else {
+            console.log(`Filtered out YouTube Short: ${item.id} (${duration})`)
+          }
         })
       }
       
@@ -207,6 +214,21 @@ function parseDuration(duration: string): string {
   } else {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
+}
+
+function isVideoShort(duration: string): boolean {
+  // YouTube Shorts are typically 60 seconds or less
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
+  if (!match) return false
+  
+  const hours = parseInt(match[1] || '0')
+  const minutes = parseInt(match[2] || '0')
+  const seconds = parseInt(match[3] || '0')
+  
+  const totalSeconds = hours * 3600 + minutes * 60 + seconds
+  
+  // Filter out videos 60 seconds or shorter (YouTube Shorts)
+  return totalSeconds <= 60
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -332,23 +354,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log(`Fetching durations for ${videoIds.length} videos...`)
       const durations = await getVideoDurations(videoIds, accessToken)
       
-      // Convert RSS videos to our format
-      const formattedVideos = rssVideos.map((video: any) => {
-        uniqueChannels.add(video.channelId)
-        
-        return {
-          id: `rss-${video.videoId}`,
-          user_id: userId,
-          video_id: video.videoId,
-          channel_id: video.channelId,
-          channel_name: video.channelName,
-          title: video.title,
-          thumbnail_url: video.thumbnailUrl,
-          published_at: video.publishedAt,
-          duration: durations[video.videoId] || 'Unknown',
-          created_at: new Date().toISOString()
-        }
-      })
+      // Convert RSS videos to our format, filtering out shorts
+      const formattedVideos = rssVideos
+        .filter((video: any) => {
+          // Only include videos that have durations (non-shorts)
+          return durations[video.videoId] !== undefined
+        })
+        .map((video: any) => {
+          uniqueChannels.add(video.channelId)
+          
+          return {
+            id: `rss-${video.videoId}`,
+            user_id: userId,
+            video_id: video.videoId,
+            channel_id: video.channelId,
+            channel_name: video.channelName,
+            title: video.title,
+            thumbnail_url: video.thumbnailUrl,
+            published_at: video.publishedAt,
+            duration: durations[video.videoId] || 'Unknown',
+            created_at: new Date().toISOString()
+          }
+        })
       
       allVideos = formattedVideos
       console.log(`RSS sync complete: ${allVideos.length} videos from ${uniqueChannels.size} channels`)

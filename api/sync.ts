@@ -1,4 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
+import { createClient } from '@supabase/supabase-js'
 
 interface SyncResult {
   channelsSynced: number
@@ -13,6 +14,19 @@ interface CronSyncResult {
   totalVideosSynced: number
   errors: string[]
   executionTime: number
+}
+
+// Inline Supabase setup (same as sync-videos.ts)
+const getSupabaseClient = () => {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY
+  
+  if (!supabaseUrl || !serviceKey) {
+    console.log('Missing Supabase environment variables for cron job')
+    return null
+  }
+  
+  return createClient(supabaseUrl, serviceKey)
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -44,8 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-async function syncUserVideos(userId: string): Promise<SyncResult> {
-  // Mock implementation - in real app this would use the sync service
+async function syncUserVideos(userId: string, accessToken: string): Promise<SyncResult> {
   const result: SyncResult = {
     channelsSynced: 0,
     videosSynced: 0,
@@ -53,18 +66,36 @@ async function syncUserVideos(userId: string): Promise<SyncResult> {
   }
 
   try {
-    // Simulate sync process
-    await delay(1000) // Simulate API calls
+    console.log(`Cron: Starting RSS sync for user ${userId}`)
     
-    // Mock successful sync
-    result.channelsSynced = Math.floor(Math.random() * 10) + 1
-    result.videosSynced = Math.floor(Math.random() * 50) + 5
+    // Call the same sync logic as the manual sync button
+    // This makes an internal API call to sync-videos endpoint
+    const syncResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/sync-videos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        accessToken
+      })
+    })
     
-    console.log(`Synced ${result.videosSynced} videos from ${result.channelsSynced} channels for user ${userId}`)
+    if (syncResponse.ok) {
+      const syncData = await syncResponse.json()
+      result.channelsSynced = syncData.channelsSynced || 0
+      result.videosSynced = syncData.videosSynced || 0
+      result.errors = syncData.errors || []
+      
+      console.log(`Cron: Successfully synced ${result.videosSynced} videos from ${result.channelsSynced} channels for user ${userId}`)
+    } else {
+      throw new Error(`Sync API returned ${syncResponse.status}`)
+    }
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown sync error'
     result.errors.push(`Failed to sync user ${userId}: ${errorMessage}`)
+    console.error(`Cron sync error for user ${userId}:`, error)
   }
 
   return result
@@ -80,18 +111,34 @@ async function syncAllUsers(): Promise<CronSyncResult> {
     executionTime: 0
   }
 
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    result.errors.push('No Supabase client available for cron job')
+    return result
+  }
+
   try {
-    // In real implementation, get all users from database
-    // const users = await databaseService.getAllUsers()
+    // Get all users from database
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('google_id, access_token')
     
-    // Mock users for demonstration
-    const mockUsers = ['user1', 'user2', 'user3']
-    result.totalUsers = mockUsers.length
+    if (error) {
+      throw new Error(`Failed to fetch users: ${error.message}`)
+    }
+    
+    if (!users || users.length === 0) {
+      console.log('Cron: No users found in database')
+      return result
+    }
+    
+    result.totalUsers = users.length
+    console.log(`Cron: Starting sync for ${result.totalUsers} users`)
 
     // Sync each user
-    for (const userId of mockUsers) {
+    for (const user of users) {
       try {
-        const userResult = await syncUserVideos(userId)
+        const userResult = await syncUserVideos(user.google_id, user.access_token)
         
         if (userResult.errors.length === 0) {
           result.successfulSyncs++
@@ -102,20 +149,22 @@ async function syncAllUsers(): Promise<CronSyncResult> {
         }
         
         // Add delay between users to avoid rate limiting
-        await delay(500)
+        await delay(2000) // 2 second delay between users
         
       } catch (error) {
         result.failedSyncs++
         const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        result.errors.push(`Failed to sync user ${userId}: ${errorMessage}`)
+        result.errors.push(`Failed to sync user ${user.google_id}: ${errorMessage}`)
       }
     }
 
     console.log(`Cron sync completed: ${result.successfulSyncs}/${result.totalUsers} users synced successfully`)
+    console.log(`Total videos synced: ${result.totalVideosSynced}`)
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     result.errors.push(`Cron job failed: ${errorMessage}`)
+    console.error('Cron job error:', error)
   }
 
   return result

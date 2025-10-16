@@ -157,7 +157,7 @@ export function useSyncVideos() {
       
       toast.success(
         'Videos synced successfully',
-        `Found ${result.videosSynced} new videos from ${result.channelsSynced} channels${debugInfo}${errorInfo}`
+        `Found ${result.videosSynced} new videos from ${result.channelsSynced} channels (no shorts!)${debugInfo}${errorInfo}`
       )
       
       // If sync returned videos, update the cache directly
@@ -191,6 +191,56 @@ export function useSyncVideos() {
     },
     onError: (error) => {
       console.error('Sync failed:', error)
+    }
+  })
+}
+
+export function useTestDailySync() {
+  const queryClient = useQueryClient()
+  const toast = useToastContext()
+
+  return useMutation({
+    mutationFn: async () => {
+      try {
+        const response = await fetch('/api/test-sync', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        })
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+        
+        return response.json()
+      } catch (error) {
+        const apiError = handleAPIError(error)
+        toast.error(
+          'Failed to test daily sync',
+          getErrorMessage(apiError)
+        )
+        throw apiError
+      }
+    },
+    onSuccess: (result: any) => {
+      console.log('Daily sync test result:', result)
+      
+      const syncResults = result.results
+      const message = syncResults ? 
+        `Tested daily sync: ${syncResults.successfulSyncs}/${syncResults.totalUsers} users synced, ${syncResults.totalVideosSynced} total videos found` :
+        'Daily sync test completed'
+      
+      toast.success(
+        'Daily sync test successful!',
+        `${message}\n\nThis runs automatically at 8 AM AEST`
+      )
+      
+      // Refresh video list to show any new videos from the test
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
+    },
+    onError: (error) => {
+      console.error('Daily sync test failed:', error)
     }
   })
 }
