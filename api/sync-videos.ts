@@ -1,4 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
+import { videoStorage } from '../lib/storage'
 
 // Simple in-memory storage for development
 interface Video {
@@ -12,38 +13,6 @@ interface Video {
   published_at: string;
   duration: string;
   created_at: string;
-}
-
-// Use global storage to share between API functions
-let videoStorage: Video[] = []
-
-// Access global storage
-if (typeof global !== 'undefined') {
-  if (!(global as any).videoStorage) {
-    (global as any).videoStorage = []
-  }
-  videoStorage = (global as any).videoStorage
-}
-
-const storage = {
-  addVideos: (videos: Video[]): void => {
-    videos.forEach(video => {
-      const exists = videoStorage.some(v => 
-        v.user_id === video.user_id && v.video_id === video.video_id
-      )
-      if (!exists) {
-        videoStorage.push(video)
-        console.log(`Added video: ${video.title} from ${video.channel_name}`)
-      }
-    })
-    
-    // Update global storage
-    if (typeof global !== 'undefined') {
-      (global as any).videoStorage = videoStorage
-    }
-    
-    console.log(`Storage now contains ${videoStorage.length} total videos`)
-  }
 }
 
 async function fetchChannelRSSFeed(channelId: string): Promise<any[]> {
@@ -200,7 +169,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     ]
 
-    storage.addVideos(mockSyncedVideos)
+    await videoStorage.addVideos(mockSyncedVideos)
     
     return res.status(200).json({
       success: true,
@@ -295,8 +264,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Add videos to storage (avoiding duplicates)
     console.log(`Sync API: About to store ${allVideos.length} videos for user ${userId}`)
-    storage.addVideos(allVideos)
-    console.log(`Sync API: Storage now has ${videoStorage.length} total videos`)
+    await videoStorage.addVideos(allVideos)
+    const allStoredVideos = await videoStorage.getAllVideos()
+    console.log(`Sync API: Storage now has ${allStoredVideos.length} total videos`)
     
     const result = {
       channelsSynced,

@@ -1,4 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
+import { videoStorage } from '../lib/storage'
 
 // Simple in-memory storage for development
 interface Video {
@@ -12,48 +13,6 @@ interface Video {
   published_at: string;
   duration: string;
   created_at: string;
-}
-
-// Use the same global storage as sync-videos API
-let videoStorage: Video[] = []
-
-// Access the shared global storage
-if (typeof global !== 'undefined') {
-  if (!(global as any).videoStorage) {
-    (global as any).videoStorage = []
-  }
-  videoStorage = (global as any).videoStorage
-}
-
-const storage = {
-  getVideos: (userId: string): Video[] => {
-    return videoStorage.filter(video => video.user_id === userId)
-  },
-
-  addVideos: (videos: Video[]): void => {
-    videos.forEach(video => {
-      const exists = videoStorage.some(v => 
-        v.user_id === video.user_id && v.video_id === video.video_id
-      )
-      if (!exists) {
-        videoStorage.push(video)
-      }
-    })
-    if (typeof global !== 'undefined') {
-      (global as any).videoStorage = videoStorage
-    }
-  },
-
-  deleteVideo: (userId: string, videoId: string): boolean => {
-    const initialLength = videoStorage.length
-    videoStorage = videoStorage.filter(video => 
-      !(video.user_id === userId && video.video_id === videoId)
-    )
-    if (typeof global !== 'undefined') {
-      (global as any).videoStorage = videoStorage
-    }
-    return videoStorage.length < initialLength
-  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -90,12 +49,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // const videos = await databaseService.getUserVideos(userId, limit, offset)
       
       // Use shared storage and sort by published date (newest first)
-      const userVideos = storage.getVideos(userId)
+      const userVideos = (await videoStorage.getVideos(userId))
         .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
       
+      const allVideos = await videoStorage.getAllVideos()
       console.log(`Videos API: Found ${userVideos.length} videos for user ${userId}`)
-      console.log(`Videos API: Total videos in storage: ${videoStorage.length}`)
-      console.log(`Videos API: All user IDs in storage:`, [...new Set(videoStorage.map(v => v.user_id))])
+      console.log(`Videos API: Total videos in storage: ${allVideos.length}`)
+      console.log(`Videos API: All user IDs in storage:`, [...new Set(allVideos.map(v => v.user_id))])
       
       const paginatedVideos = userVideos.slice(offset, offset + limit)
       const hasMore = offset + limit < userVideos.length
@@ -134,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // await databaseService.deleteVideo(userId, videoId)
       
       // Remove from shared storage
-      storage.deleteVideo(userId, videoId)
+      await videoStorage.deleteVideo(userId, videoId)
       
       console.log(`Deleted video ${videoId} for user ${userId}`)
 
