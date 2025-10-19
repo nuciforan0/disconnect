@@ -1,4 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
+import { createClient } from '@supabase/supabase-js'
 
 const GOOGLE_CLIENT_ID = process.env.VITE_YOUTUBE_CLIENT_ID
 const GOOGLE_CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET
@@ -35,7 +36,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tokens = await tokenResponse.json()
 
     // Update tokens in database
-    const { createClient } = require('@supabase/supabase-js')
     const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
     const serviceKey = process.env.SUPABASE_SERVICE_KEY
     

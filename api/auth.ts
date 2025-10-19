@@ -1,4 +1,5 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
+import { createClient } from '@supabase/supabase-js'
 
 const GOOGLE_CLIENT_ID = process.env.VITE_YOUTUBE_CLIENT_ID
 const GOOGLE_CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET
@@ -64,24 +65,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Store user and tokens in database (don't let this break auth flow)
       try {
-        const { createClient } = require('@supabase/supabase-js')
+        console.log('🔍 Checking environment variables...')
         const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
         const serviceKey = process.env.SUPABASE_SERVICE_KEY
+        
+        console.log('Environment check:', {
+          hasSupabaseUrl: !!supabaseUrl,
+          hasServiceKey: !!serviceKey,
+          supabaseUrlPrefix: supabaseUrl ? supabaseUrl.substring(0, 20) + '...' : 'missing',
+          serviceKeyPrefix: serviceKey ? serviceKey.substring(0, 10) + '...' : 'missing'
+        })
         
         if (supabaseUrl && serviceKey) {
           const supabase = createClient(supabaseUrl, serviceKey)
           
-          console.log(`Attempting to save user ${userInfo.id} to database...`)
+          console.log(`🔄 Attempting to save user ${userInfo.id} (${userInfo.email}) to database...`)
+          
+          const userData = {
+            google_id: userInfo.id,
+            email: userInfo.email,
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token || 'no_refresh_token_received'
+          }
+          
+          console.log('User data to save:', {
+            google_id: userData.google_id,
+            email: userData.email,
+            hasAccessToken: !!userData.access_token,
+            hasRefreshToken: !!userData.refresh_token,
+            refreshTokenValue: userData.refresh_token
+          })
           
           // Upsert user with real tokens
           const { data: user, error: dbError } = await supabase
             .from('users')
-            .upsert({
-              google_id: userInfo.id,
-              email: userInfo.email,
-              access_token: tokens.access_token,
-              refresh_token: tokens.refresh_token || 'no_refresh_token_received'
-            }, { 
+            .upsert(userData, { 
               onConflict: 'google_id',
               ignoreDuplicates: false 
             })
@@ -89,15 +107,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .single()
           
           if (dbError) {
-            console.error('Database upsert error:', dbError)
+            console.error('❌ Database upsert error:', {
+              message: dbError.message,
+              details: dbError.details,
+              hint: dbError.hint,
+              code: dbError.code
+            })
+          } else if (user) {
+            console.log(`✅ Successfully saved user to database:`, {
+              id: user.id,
+              google_id: user.google_id,
+              email: user.email,
+              hasRefreshToken: !!user.refresh_token,
+              refreshToken: user.refresh_token
+            })
           } else {
-            console.log(`✅ Saved user ${userInfo.id} with real refresh token to database`)
+            console.log('⚠️ No error but no user returned from database')
           }
         } else {
-          console.log('Missing Supabase environment variables, skipping database save')
+          console.error('❌ Missing Supabase environment variables:', {
+            VITE_SUPABASE_URL: !!process.env.VITE_SUPABASE_URL,
+            SUPABASE_URL: !!process.env.SUPABASE_URL,
+            SUPABASE_SERVICE_KEY: !!process.env.SUPABASE_SERVICE_KEY
+          })
         }
       } catch (dbError) {
-        console.error('Failed to save user to database (non-blocking):', dbError)
+        console.error('❌ Exception during database save:', {
+          error: dbError,
+          message: dbError instanceof Error ? dbError.message : 'Unknown error',
+          stack: dbError instanceof Error ? dbError.stack : undefined
+        })
       }
 
       const authData = {
