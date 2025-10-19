@@ -58,7 +58,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-async function syncUserVideos(userId: string, accessToken: string): Promise<SyncResult> {
+async function refreshUserToken(refreshToken: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refreshToken })
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      return data.accessToken
+    }
+  } catch (error) {
+    console.error('Failed to refresh token:', error)
+  }
+  return null
+}
+
+async function syncUserVideos(userId: string, accessToken: string, refreshToken?: string): Promise<SyncResult> {
   const result: SyncResult = {
     channelsSynced: 0,
     videosSynced: 0,
@@ -68,18 +88,45 @@ async function syncUserVideos(userId: string, accessToken: string): Promise<Sync
   try {
     console.log(`Cron: Starting RSS sync for user ${userId}`)
     
+    let currentAccessToken = accessToken
+    
     // Call the same sync logic as the manual sync button
     // This makes an internal API call to sync-videos endpoint
-    const syncResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/sync-videos`, {
+    let syncResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/sync-videos`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         userId,
-        accessToken
+        accessToken: currentAccessToken
       })
     })
+    
+    // If access token is expired and we have a refresh token, try to refresh
+    if (!syncResponse.ok && syncResponse.status === 401 && refreshToken && refreshToken !== 'placeholder' && refreshToken !== 'created_via_sync_no_refresh_token') {
+      console.log(`Access token expired for user ${userId}, attempting refresh...`)
+      
+      const newAccessToken = await refreshUserToken(refreshToken)
+      if (newAccessToken) {
+        console.log(`✅ Successfully refreshed token for user ${userId}`)
+        currentAccessToken = newAccessToken
+        
+        // Retry sync with new token
+        syncResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/sync-videos`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            accessToken: currentAccessToken
+          })
+        })
+      } else {
+        result.errors.push(`Failed to refresh expired token for user ${userId}`)
+      }
+    }
     
     if (syncResponse.ok) {
       const syncData = await syncResponse.json()
@@ -118,10 +165,10 @@ async function syncAllUsers(): Promise<CronSyncResult> {
   }
 
   try {
-    // Get all users from database
+    // Get all users from database with their tokens
     const { data: users, error } = await supabase
       .from('users')
-      .select('google_id, access_token')
+      .select('google_id, access_token, refresh_token')
     
     if (error) {
       throw new Error(`Failed to fetch users: ${error.message}`)
@@ -138,7 +185,7 @@ async function syncAllUsers(): Promise<CronSyncResult> {
     // Sync each user
     for (const user of users) {
       try {
-        const userResult = await syncUserVideos(user.google_id, user.access_token)
+        const userResult = await syncUserVideos(user.google_id, user.access_token, user.refresh_token)
         
         if (userResult.errors.length === 0) {
           result.successfulSyncs++

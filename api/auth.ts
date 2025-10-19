@@ -60,8 +60,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const userInfo = await userResponse.json()
 
-      // Store user and tokens in database (will implement database operations)
-      // For now, redirect with success and include tokens
+      // Store user and tokens in database
+      const { createClient } = require('@supabase/supabase-js')
+      const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+      const serviceKey = process.env.SUPABASE_SERVICE_KEY
+      
+      if (supabaseUrl && serviceKey) {
+        try {
+          const supabase = createClient(supabaseUrl, serviceKey)
+          
+          // Upsert user with real tokens
+          const { data: user } = await supabase
+            .from('users')
+            .upsert({
+              google_id: userInfo.id,
+              email: userInfo.email,
+              access_token: tokens.access_token,
+              refresh_token: tokens.refresh_token || 'no_refresh_token_received'
+            }, { 
+              onConflict: 'google_id',
+              ignoreDuplicates: false 
+            })
+            .select()
+            .single()
+          
+          console.log(`✅ Saved user ${userInfo.id} with real refresh token to database`)
+        } catch (dbError) {
+          console.error('Failed to save user to database:', dbError)
+        }
+      }
+
       const authData = {
         user: {
           id: userInfo.id,

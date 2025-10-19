@@ -398,19 +398,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .single()
           
           if (!user) {
-            // Create new user
+            // Create new user - this should rarely happen since OAuth callback creates users
+            console.log(`User ${userId} not found in database, creating new user`)
             const { data: newUser } = await supabase
               .from('users')
               .insert({
                 google_id: userId,
-                email: 'user@example.com', // You can get real email later
+                email: 'user@example.com', // Will be updated when user logs in via OAuth
                 access_token: accessToken,
-                refresh_token: 'placeholder'
+                refresh_token: 'created_via_sync_no_refresh_token'
               })
               .select()
               .single()
             user = newUser
             console.log(`Created new user in database: ${user?.id}`)
+          } else {
+            // Update existing user's access token
+            const { data: updatedUser } = await supabase
+              .from('users')
+              .update({ 
+                access_token: accessToken,
+                last_sync: new Date().toISOString()
+              })
+              .eq('id', user.id)
+              .select()
+              .single()
+            user = updatedUser
+            console.log(`Updated access token for existing user: ${user?.id}`)
           }
           
           if (user) {

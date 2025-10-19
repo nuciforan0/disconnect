@@ -34,7 +34,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const tokens = await tokenResponse.json()
 
-    // Update tokens in database (will implement)
+    // Update tokens in database
+    const { createClient } = require('@supabase/supabase-js')
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+    const serviceKey = process.env.SUPABASE_SERVICE_KEY
+    
+    if (supabaseUrl && serviceKey) {
+      try {
+        const supabase = createClient(supabaseUrl, serviceKey)
+        
+        // Update access token for user with this refresh token
+        const { data: updatedUser } = await supabase
+          .from('users')
+          .update({ 
+            access_token: tokens.access_token
+          })
+          .eq('refresh_token', refreshToken)
+          .select()
+          .single()
+        
+        if (updatedUser) {
+          console.log(`✅ Updated access token for user ${updatedUser.google_id}`)
+        }
+      } catch (dbError) {
+        console.error('Failed to update tokens in database:', dbError)
+      }
+    }
     
     res.status(200).json({
       accessToken: tokens.access_token,
