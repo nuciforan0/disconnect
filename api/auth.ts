@@ -63,6 +63,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const userInfo = await userResponse.json()
       console.log(`Got user info for: ${userInfo.email} (ID: ${userInfo.id})`)
 
+      // Generate a unique session token for PWA persistence
+      const sessionToken = Buffer.from(`${userInfo.id}_${Date.now()}_${Math.random()}`).toString('base64')
+      
+      const userData = {
+        google_id: userInfo.id,
+        email: userInfo.email,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token || 'no_refresh_token_received',
+        session_token: sessionToken
+      }
+
       // Store user and tokens in database (don't let this break auth flow)
       try {
         console.log('🔍 Checking environment variables...')
@@ -80,17 +91,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const supabase = createClient(supabaseUrl, serviceKey)
           
           console.log(`🔄 Attempting to save user ${userInfo.id} (${userInfo.email}) to database...`)
-          
-          // Generate a unique session token for PWA persistence
-          const sessionToken = Buffer.from(`${userInfo.id}_${Date.now()}_${Math.random()}`).toString('base64')
-          
-          const userData = {
-            google_id: userInfo.id,
-            email: userInfo.email,
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token || 'no_refresh_token_received',
-            session_token: sessionToken
-          }
           
           console.log('User data to save:', {
             google_id: userData.google_id,
@@ -126,9 +126,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               refreshToken: user.refresh_token,
               sessionToken: user.session_token
             })
-            
-            // Store the session token for the response
-            userData.session_token = user.session_token
           } else {
             console.log('⚠️ No error but no user returned from database')
           }
@@ -157,8 +154,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           expiresIn: tokens.expires_in
-        },
-        sessionToken: userData.session_token
+        }
+      }
+      
+      // Add session token if database save was successful
+      if (userData.session_token) {
+        authData.sessionToken = userData.session_token
       }
 
       // Set secure HTTP-only cookie for persistent user identification
