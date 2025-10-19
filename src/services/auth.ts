@@ -1,4 +1,5 @@
 import { apiService } from './api'
+import { authStorage, userStorage } from '../utils/persistentStorage'
 
 export interface AuthTokens {
   accessToken: string;
@@ -23,12 +24,13 @@ class AuthService {
 
   private loadTokensFromStorage() {
     try {
-      const stored = localStorage.getItem('auth_tokens')
+      const stored = authStorage.getItem('tokens')
       if (stored) {
         const tokens = JSON.parse(stored)
         this.accessToken = tokens.accessToken
         this.refreshToken = tokens.refreshToken
         this.tokenExpiry = tokens.expiry
+        console.log('✅ Loaded tokens from persistent storage')
       }
     } catch (error) {
       console.error('Failed to load tokens from storage:', error)
@@ -38,25 +40,31 @@ class AuthService {
   private saveTokensToStorage(tokens: AuthTokens) {
     try {
       const expiry = Date.now() + (tokens.expiresIn * 1000)
-      localStorage.setItem('auth_tokens', JSON.stringify({
+      const tokenData = {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
         expiry
-      }))
+      }
+      
+      authStorage.setItem('tokens', JSON.stringify(tokenData))
       
       this.accessToken = tokens.accessToken
       this.refreshToken = tokens.refreshToken
       this.tokenExpiry = expiry
+      
+      console.log('✅ Saved tokens to persistent storage')
     } catch (error) {
       console.error('Failed to save tokens to storage:', error)
     }
   }
 
   private clearTokensFromStorage() {
-    localStorage.removeItem('auth_tokens')
+    authStorage.removeItem('tokens')
+    userStorage.removeItem('info')
     this.accessToken = null
     this.refreshToken = null
     this.tokenExpiry = null
+    console.log('🗑️ Cleared tokens from persistent storage')
   }
 
   async initiateGoogleAuth(): Promise<string> {
@@ -114,8 +122,79 @@ class AuthService {
     return !!this.accessToken && !!this.tokenExpiry && Date.now() < this.tokenExpiry
   }
 
-  logout() {
+  // Try to restore authentication from server using stored user identifier or cookies
+  async restoreAuthenticationFromServer(): Promise<boolean> {
+    try {
+      // First, try to get user info from storage
+      const storedUser = userStorage.getItem('info')
+      let userId = null
+      
+      if (storedUser) {
+        try {
+          const userInfo = JSON.parse(storedUser)
+          userId = userInfo.id
+          console.log(`Found stored user info for: ${userInfo.email}`)
+        } catch (e) {
+          console.log('Failed to parse stored user info')
+        }
+      }
+
+      // Call our restore endpoint (it will try cookies if no userId provided)
+      console.log(`Attempting to restore authentication...`)
+      const response = await fetch('/api/auth/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Important: include cookies
+        body: JSON.stringify({
+          userId: userId // May be null, endpoint will try cookies
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        
+        if (data.tokens) {
+          // Save the restored tokens
+          this.saveTokensToStorage({
+            accessToken: data.tokens.accessToken,
+            refreshToken: data.tokens.refreshToken,
+            expiresIn: data.tokens.expiresIn
+          })
+          
+          // Also restore user info if provided
+          if (data.user) {
+            userStorage.setItem('info', JSON.stringify(data.user))
+          }
+          
+          console.log('✅ Authentication restored successfully')
+          return true
+        }
+      } else {
+        console.log('❌ Server could not restore authentication:', response.status)
+      }
+    } catch (error) {
+      console.error('Error restoring authentication:', error)
+    }
+
+    return false
+  }
+
+  async logout() {
+    // Clear local storage
     this.clearTokensFromStorage()
+    
+    // Clear server-side cookies
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      })
+      console.log('✅ Server-side logout completed')
+    } catch (error) {
+      console.error('Failed to logout on server:', error)
+    }
   }
 
   // Handle OAuth callback (called from URL params)
@@ -138,9 +217,9 @@ class AuthService {
             console.log('Tokens saved to storage')
           }
           
-          // Save user info to localStorage
+          // Save user info to persistent storage
           if (authData.user) {
-            localStorage.setItem('user_info', JSON.stringify(authData.user))
+            userStorage.setItem('info', JSON.stringify(authData.user))
             console.log('User info saved:', authData.user.email)
             return authData.user
           }

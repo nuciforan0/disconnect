@@ -152,6 +152,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
+      // Set secure HTTP-only cookie for persistent user identification
+      // This survives localStorage clearing and browser restarts
+      res.setHeader('Set-Cookie', [
+        `auth_user_id=${userInfo.id}; HttpOnly; Secure; SameSite=Strict; Max-Age=${60 * 60 * 24 * 30}; Path=/`, // 30 days
+        `auth_session=${Buffer.from(JSON.stringify({userId: userInfo.id, email: userInfo.email})).toString('base64')}; HttpOnly; Secure; SameSite=Strict; Max-Age=${60 * 60 * 24 * 30}; Path=/`
+      ])
+
       console.log(`Redirecting to success with user data for: ${userInfo.email}`)
       res.redirect(`${process.env.VITE_APP_URL}/login?auth=success&data=${encodeURIComponent(JSON.stringify(authData))}`)
     } catch (error) {
