@@ -60,11 +60,12 @@ class AuthService {
 
   private clearTokensFromStorage() {
     authStorage.removeItem('tokens')
+    authStorage.removeItem('session_token')
     userStorage.removeItem('info')
     this.accessToken = null
     this.refreshToken = null
     this.tokenExpiry = null
-    console.log('🗑️ Cleared tokens from persistent storage')
+    console.log('🗑️ Cleared tokens and session token from persistent storage')
   }
 
   async initiateGoogleAuth(): Promise<string> {
@@ -122,10 +123,50 @@ class AuthService {
     return !!this.accessToken && !!this.tokenExpiry && Date.now() < this.tokenExpiry
   }
 
-  // Try to restore authentication from server using stored user identifier or cookies
+  // Try to restore authentication from server using session token or cookies
   async restoreAuthenticationFromServer(): Promise<boolean> {
     try {
-      // First, try to get user info from storage
+      // First, try session token approach (better for PWAs)
+      const sessionToken = authStorage.getItem('session_token')
+      
+      if (sessionToken) {
+        console.log('🎫 Attempting restore with session token')
+        
+        const response = await fetch('/api/auth/restore-simple', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sessionToken: sessionToken
+          })
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          
+          if (data.tokens) {
+            // Save the restored tokens
+            this.saveTokensToStorage({
+              accessToken: data.tokens.accessToken,
+              refreshToken: data.tokens.refreshToken,
+              expiresIn: data.tokens.expiresIn
+            })
+            
+            // Also restore user info if provided
+            if (data.user) {
+              userStorage.setItem('info', JSON.stringify(data.user))
+            }
+            
+            console.log('✅ Authentication restored via session token')
+            return true
+          }
+        } else {
+          console.log('❌ Session token restore failed:', response.status)
+        }
+      }
+
+      // Fallback to cookie-based restore
       const storedUser = userStorage.getItem('info')
       let userId = null
       
@@ -139,18 +180,26 @@ class AuthService {
         }
       }
 
-      // Call our restore endpoint (it will try cookies if no userId provided)
-      console.log(`Attempting to restore authentication...`)
+      console.log('🍪 Attempting restore with cookies as fallback')
       const response = await fetch('/api/auth/restore', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include', // Important: include cookies
+        credentials: 'include',
         body: JSON.stringify({
-          userId: userId // May be null, endpoint will try cookies
+          userId: userId
         })
       })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('Cookie restore also failed:', {
+          status: response.status,
+          error: errorData
+        })
+        return false
+      }
 
       if (response.ok) {
         const data = await response.json()
@@ -221,6 +270,13 @@ class AuthService {
           if (authData.user) {
             userStorage.setItem('info', JSON.stringify(authData.user))
             console.log('User info saved:', authData.user.email)
+            
+            // Save session token for PWA persistence
+            if (authData.sessionToken) {
+              authStorage.setItem('session_token', authData.sessionToken)
+              console.log('✅ Session token saved for PWA persistence')
+            }
+            
             return authData.user
           }
         } catch (error) {

@@ -5,26 +5,57 @@ const GOOGLE_CLIENT_ID = process.env.VITE_YOUTUBE_CLIENT_ID
 const GOOGLE_CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log('🔄 Auth restore request received')
+  console.log('Method:', req.method)
+  console.log('Headers:', {
+    cookie: req.headers.cookie ? 'present' : 'missing',
+    'user-agent': req.headers['user-agent']?.substring(0, 50) + '...',
+    origin: req.headers.origin
+  })
+  console.log('Body:', req.body)
+
   if (req.method !== 'POST') {
+    console.log('❌ Method not allowed:', req.method)
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
   let userId = req.body?.userId
+  console.log('UserId from body:', userId)
 
   // If no userId provided in body, try to get it from secure cookie
   if (!userId) {
     const cookies = req.headers.cookie
+    console.log('Raw cookies:', cookies)
+    
     if (cookies) {
       const authUserIdMatch = cookies.match(/auth_user_id=([^;]+)/)
+      const authSessionMatch = cookies.match(/auth_session=([^;]+)/)
+      
+      console.log('Cookie matches:', {
+        authUserIdMatch: authUserIdMatch ? authUserIdMatch[1] : 'not found',
+        authSessionMatch: authSessionMatch ? 'found' : 'not found'
+      })
+      
       if (authUserIdMatch) {
         userId = authUserIdMatch[1]
         console.log(`🍪 Found user ID in cookie: ${userId}`)
       }
+    } else {
+      console.log('❌ No cookies in request headers')
     }
   }
 
   if (!userId) {
-    return res.status(400).json({ error: 'User ID is required (not found in request or cookies)' })
+    console.log('❌ No user ID found in body or cookies')
+    return res.status(400).json({ 
+      error: 'User ID is required (not found in request or cookies)',
+      debug: {
+        hasBody: !!req.body,
+        hasCookies: !!req.headers.cookie,
+        bodyUserId: req.body?.userId,
+        cookieHeader: req.headers.cookie
+      }
+    })
   }
 
   try {

@@ -81,11 +81,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           
           console.log(`🔄 Attempting to save user ${userInfo.id} (${userInfo.email}) to database...`)
           
+          // Generate a unique session token for PWA persistence
+          const sessionToken = Buffer.from(`${userInfo.id}_${Date.now()}_${Math.random()}`).toString('base64')
+          
           const userData = {
             google_id: userInfo.id,
             email: userInfo.email,
             access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token || 'no_refresh_token_received'
+            refresh_token: tokens.refresh_token || 'no_refresh_token_received',
+            session_token: sessionToken
           }
           
           console.log('User data to save:', {
@@ -119,8 +123,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               google_id: user.google_id,
               email: user.email,
               hasRefreshToken: !!user.refresh_token,
-              refreshToken: user.refresh_token
+              refreshToken: user.refresh_token,
+              sessionToken: user.session_token
             })
+            
+            // Store the session token for the response
+            userData.session_token = user.session_token
           } else {
             console.log('⚠️ No error but no user returned from database')
           }
@@ -149,15 +157,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
           expiresIn: tokens.expires_in
-        }
+        },
+        sessionToken: userData.session_token
       }
 
       // Set secure HTTP-only cookie for persistent user identification
       // This survives localStorage clearing and browser restarts
-      res.setHeader('Set-Cookie', [
-        `auth_user_id=${userInfo.id}; HttpOnly; Secure; SameSite=Strict; Max-Age=${60 * 60 * 24 * 30}; Path=/`, // 30 days
-        `auth_session=${Buffer.from(JSON.stringify({userId: userInfo.id, email: userInfo.email})).toString('base64')}; HttpOnly; Secure; SameSite=Strict; Max-Age=${60 * 60 * 24 * 30}; Path=/`
-      ])
+      const cookieOptions = `HttpOnly; Secure; SameSite=Strict; Max-Age=${60 * 60 * 24 * 30}; Path=/`
+      const cookies = [
+        `auth_user_id=${userInfo.id}; ${cookieOptions}`, // 30 days
+        `auth_session=${Buffer.from(JSON.stringify({userId: userInfo.id, email: userInfo.email})).toString('base64')}; ${cookieOptions}`
+      ]
+      
+      res.setHeader('Set-Cookie', cookies)
+      console.log(`🍪 Setting cookies for user ${userInfo.id}:`, cookies)
 
       console.log(`Redirecting to success with user data for: ${userInfo.email}`)
       res.redirect(`${process.env.VITE_APP_URL}/login?auth=success&data=${encodeURIComponent(JSON.stringify(authData))}`)
