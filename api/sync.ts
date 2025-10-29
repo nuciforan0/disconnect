@@ -120,6 +120,38 @@ async function refreshUserToken(refreshToken: string): Promise<string | null> {
   }
 }
 
+// Helper functions for duration parsing and filtering
+function parseDuration(duration: string): string {
+  // Parse ISO 8601 duration format (PT4M13S -> 4:13)
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
+  if (!match) return 'Unknown'
+  
+  const hours = parseInt(match[1] || '0')
+  const minutes = parseInt(match[2] || '0')
+  const seconds = parseInt(match[3] || '0')
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  } else {
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+}
+
+function isVideoShort(duration: string): boolean {
+  // Filter out videos 2.5 minutes (150 seconds) or shorter
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
+  if (!match) return false
+  
+  const hours = parseInt(match[1] || '0')
+  const minutes = parseInt(match[2] || '0')
+  const seconds = parseInt(match[3] || '0')
+  
+  const totalSeconds = hours * 3600 + minutes * 60 + seconds
+  
+  // Filter out videos 2.5 minutes (150 seconds) or shorter
+  return totalSeconds <= 150
+}
+
 // Simple direct sync logic for cron job (avoids HTTP calls)
 async function performDirectSync(userId: string, accessToken: string): Promise<SyncResult> {
   const result: SyncResult = {
@@ -223,9 +255,61 @@ async function performDirectSync(userId: string, accessToken: string): Promise<S
     
     console.log(`Found ${allVideos.length} recent videos from RSS feeds`)
     
+    // Get video durations from YouTube API and filter out shorts
+    let filteredVideos: any[] = []
+    if (allVideos.length > 0) {
+      const videoIds = allVideos.map(v => v.videoId)
+      console.log(`Fetching durations for ${videoIds.length} videos...`)
+      
+      const durations: {[key: string]: string} = {}
+      
+      // Process videos in batches of 50 (YouTube API limit)
+      for (let i = 0; i < videoIds.length; i += 50) {
+        const batch = videoIds.slice(i, i + 50)
+        const url = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${batch.join(',')}`
+        
+        try {
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Accept': 'application/json'
+            }
+          })
+          
+          if (response.ok) {
+            const data = await response.json()
+            data.items?.forEach((item: any) => {
+              const duration = parseDuration(item.contentDetails.duration)
+              const isShort = isVideoShort(item.contentDetails.duration)
+              if (!isShort) {
+                durations[item.id] = duration
+              } else {
+                console.log(`Filtered out short video (≤2.5min): ${item.id} (${duration})`)
+              }
+            })
+          }
+          
+          // Small delay between batches
+          if (i + 50 < videoIds.length) {
+            await new Promise(resolve => setTimeout(resolve, 100))
+          }
+        } catch (error) {
+          console.error(`Error fetching durations for batch ${i}:`, error)
+        }
+      }
+      
+      // Filter videos to only include those with valid durations (non-shorts)
+      filteredVideos = allVideos.filter(video => durations[video.videoId]).map(video => ({
+        ...video,
+        duration: durations[video.videoId]
+      }))
+      
+      console.log(`Filtered: ${allVideos.length} total videos → ${filteredVideos.length} non-shorts videos`)
+    }
+    
     // Save to database
     const supabase = getSupabaseClient()
-    if (supabase && allVideos.length > 0) {
+    if (supabase && filteredVideos.length > 0) {
       try {
         // Get user from database
         const { data: user } = await supabase
@@ -236,7 +320,7 @@ async function performDirectSync(userId: string, accessToken: string): Promise<S
         
         if (user) {
           // Prepare videos for database
-          const videosToSave = allVideos.map(video => ({
+          const videosToSave = filteredVideos.map(video => ({
             user_id: user.id,
             video_id: video.videoId,
             channel_id: video.channelId,
@@ -244,7 +328,7 @@ async function performDirectSync(userId: string, accessToken: string): Promise<S
             title: video.title,
             thumbnail_url: video.thumbnailUrl,
             published_at: video.publishedAt,
-            duration: 'Unknown' // We'll skip duration check for cron to keep it simple
+            duration: video.duration
           }))
           
           // Save videos to database
@@ -274,7 +358,7 @@ async function performDirectSync(userId: string, accessToken: string): Promise<S
     }
     
     result.channelsSynced = uniqueChannels.size
-    result.videosSynced = allVideos.length
+    result.videosSynced = filteredVideos.length
     
     console.log(`Direct sync completed: ${result.videosSynced} videos from ${result.channelsSynced} channels`)
     
