@@ -30,7 +30,8 @@ const getSupabaseClient = () => {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
+  // Vercel cron jobs send GET requests, but we also support POST for manual calls
+  if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
