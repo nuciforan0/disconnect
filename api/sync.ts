@@ -35,6 +35,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const startTime = Date.now()
+  const timestamp = new Date().toISOString()
+  
+  console.log(`🚀 CRON JOB TRIGGERED at ${timestamp}`)
+  console.log('Environment check:', {
+    hasSupabaseUrl: !!(process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL),
+    hasSupabaseKey: !!process.env.SUPABASE_SERVICE_KEY,
+    hasYouTubeClientId: !!process.env.VITE_YOUTUBE_CLIENT_ID,
+    hasYouTubeSecret: !!process.env.YOUTUBE_CLIENT_SECRET,
+    vercelUrl: process.env.VERCEL_URL
+  })
 
   try {
     // Automated daily sync for all users
@@ -60,22 +70,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 async function refreshUserToken(refreshToken: string): Promise<string | null> {
   try {
-    const response = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/auth/refresh`, {
+    console.log('🔄 Refreshing token directly in cron job...')
+    
+    // Call Google's token refresh API directly instead of making HTTP request to ourselves
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: JSON.stringify({ refreshToken })
+      body: new URLSearchParams({
+        client_id: process.env.VITE_YOUTUBE_CLIENT_ID!,
+        client_secret: process.env.YOUTUBE_CLIENT_SECRET!,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
     })
 
-    if (response.ok) {
-      const data = await response.json()
-      return data.accessToken
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.json().catch(() => ({}))
+      console.error('❌ Google token refresh failed in cron:', {
+        status: tokenResponse.status,
+        error: errorData
+      })
+      return null
     }
+
+    const tokens = await tokenResponse.json()
+    
+    // Update the access token in database
+    const supabase = getSupabaseClient()
+    if (supabase) {
+      try {
+        await supabase
+          .from('users')
+          .update({ access_token: tokens.access_token })
+          .eq('refresh_token', refreshToken)
+        
+        console.log('✅ Updated access token in database')
+      } catch (dbError) {
+        console.error('Failed to update token in database:', dbError)
+      }
+    }
+    
+    return tokens.access_token
   } catch (error) {
     console.error('Failed to refresh token:', error)
+    return null
   }
-  return null
 }
 
 async function syncUserVideos(userId: string, accessToken: string, refreshToken?: string): Promise<SyncResult> {
@@ -90,9 +131,15 @@ async function syncUserVideos(userId: string, accessToken: string, refreshToken?
     
     let currentAccessToken = accessToken
     
-    // Call the same sync logic as the manual sync button
-    // This makes an internal API call to sync-videos endpoint
-    let syncResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/sync-videos`, {
+    // Call the sync-videos endpoint directly
+    // Use the correct Vercel URL format for internal calls
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : 'http://localhost:3000'
+    
+    console.log(`Making sync request to: ${baseUrl}/api/sync-videos`)
+    
+    let syncResponse = await fetch(`${baseUrl}/api/sync-videos`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -113,7 +160,7 @@ async function syncUserVideos(userId: string, accessToken: string, refreshToken?
         currentAccessToken = newAccessToken
         
         // Retry sync with new token
-        syncResponse = await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/sync-videos`, {
+        syncResponse = await fetch(`${baseUrl}/api/sync-videos`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -136,7 +183,13 @@ async function syncUserVideos(userId: string, accessToken: string, refreshToken?
       
       console.log(`Cron: Successfully synced ${result.videosSynced} videos from ${result.channelsSynced} channels for user ${userId}`)
     } else {
-      throw new Error(`Sync API returned ${syncResponse.status}`)
+      const errorText = await syncResponse.text().catch(() => 'No error text')
+      console.error(`❌ Sync API failed for user ${userId}:`, {
+        status: syncResponse.status,
+        statusText: syncResponse.statusText,
+        error: errorText
+      })
+      throw new Error(`Sync API returned ${syncResponse.status}: ${errorText}`)
     }
     
   } catch (error) {
