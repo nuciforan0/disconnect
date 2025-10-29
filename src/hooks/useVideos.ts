@@ -160,12 +160,18 @@ export function useSyncVideos() {
         `Found ${result.videosSynced} new videos from ${result.channelsSynced} channels (2.5+ min only!)${debugInfo}${errorInfo}`
       )
       
-      // If sync returned videos, update the cache directly
+      // Always invalidate queries to refresh the video list
+      console.log('Invalidating video queries to refresh the list...')
+      queryClient.invalidateQueries({ queryKey: ['videos'] })
+      
+      // Also try to update cache directly if we have videos
       if (result.videos && result.videos.length > 0) {
-        console.log(`Updating cache with ${result.videos.length} synced videos`)
+        console.log(`Also updating cache directly with ${result.videos.length} synced videos`)
         
         // Update all video queries with the new videos
         queryClient.setQueriesData({ queryKey: ['videos'] }, (oldData: any) => {
+          console.log('Old cache data:', oldData)
+          
           if (!oldData) {
             return {
               videos: result.videos,
@@ -178,15 +184,14 @@ export function useSyncVideos() {
           const existingVideoIds = new Set(oldData.videos.map((v: any) => v.videoId))
           const newVideos = result.videos.filter((v: any) => !existingVideoIds.has(v.videoId))
           
+          console.log(`Adding ${newVideos.length} new videos to cache`)
+          
           return {
             ...oldData,
             videos: [...newVideos, ...oldData.videos],
             total: oldData.total + newVideos.length
           }
         })
-      } else {
-        // Fallback: refresh the video list
-        queryClient.invalidateQueries({ queryKey: ['videos'] })
       }
     },
     onError: (error) => {

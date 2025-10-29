@@ -132,16 +132,30 @@ async function syncUserVideos(userId: string, accessToken: string, refreshToken?
     
     let currentAccessToken = accessToken
     
-    // Try to sync directly using shared logic
+    // Call sync-videos endpoint directly with a simple HTTP request
+    // This avoids module import issues and reuses existing tested code
     try {
-      const { performVideoSync } = await import('./lib/syncLogic')
-      const syncResult = await performVideoSync(userId, currentAccessToken)
+      const syncResponse = await fetch(`https://${process.env.VERCEL_URL}/api/sync-videos`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          accessToken: currentAccessToken
+        })
+      })
       
-      result.channelsSynced = syncResult.channelsSynced
-      result.videosSynced = syncResult.videosSynced
-      result.errors = syncResult.errors
-      
-      console.log(`Cron: Successfully synced ${result.videosSynced} videos from ${result.channelsSynced} channels for user ${userId}`)
+      if (syncResponse.ok) {
+        const syncData = await syncResponse.json()
+        result.channelsSynced = syncData.channelsSynced || 0
+        result.videosSynced = syncData.videosSynced || 0
+        result.errors = syncData.errors || []
+        
+        console.log(`Cron: Successfully synced ${result.videosSynced} videos from ${result.channelsSynced} channels for user ${userId}`)
+      } else {
+        throw new Error(`Sync API returned ${syncResponse.status}`)
+      }
       
     } catch (syncError) {
       // If sync failed and we have a refresh token, try to refresh and retry
@@ -154,14 +168,27 @@ async function syncUserVideos(userId: string, accessToken: string, refreshToken?
           currentAccessToken = newAccessToken
           
           // Retry sync with new token
-          const { performVideoSync } = await import('./lib/syncLogic')
-          const retryResult = await performVideoSync(userId, currentAccessToken)
+          const retryResponse = await fetch(`https://${process.env.VERCEL_URL}/api/sync-videos`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId,
+              accessToken: currentAccessToken
+            })
+          })
           
-          result.channelsSynced = retryResult.channelsSynced
-          result.videosSynced = retryResult.videosSynced
-          result.errors = retryResult.errors
-          
-          console.log(`Cron: Successfully synced ${result.videosSynced} videos after token refresh for user ${userId}`)
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json()
+            result.channelsSynced = retryData.channelsSynced || 0
+            result.videosSynced = retryData.videosSynced || 0
+            result.errors = retryData.errors || []
+            
+            console.log(`Cron: Successfully synced ${result.videosSynced} videos after token refresh for user ${userId}`)
+          } else {
+            throw new Error(`Retry sync API returned ${retryResponse.status}`)
+          }
         } else {
           result.errors.push(`Failed to refresh expired token for user ${userId}`)
           throw syncError
