@@ -128,69 +128,47 @@ async function syncUserVideos(userId: string, accessToken: string, refreshToken?
   }
 
   try {
-    console.log(`Cron: Starting RSS sync for user ${userId}`)
+    console.log(`Cron: Starting direct sync for user ${userId}`)
     
     let currentAccessToken = accessToken
     
-    // Call the sync-videos endpoint directly
-    // Use the correct Vercel URL format for internal calls
-    const baseUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : 'http://localhost:3000'
-    
-    console.log(`Making sync request to: ${baseUrl}/api/sync-videos`)
-    
-    let syncResponse = await fetch(`${baseUrl}/api/sync-videos`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userId,
-        accessToken: currentAccessToken
-      })
-    })
-    
-    // If access token is expired and we have a refresh token, try to refresh
-    if (!syncResponse.ok && syncResponse.status === 401 && refreshToken && refreshToken !== 'placeholder' && refreshToken !== 'created_via_sync_no_refresh_token') {
-      console.log(`Access token expired for user ${userId}, attempting refresh...`)
+    // Try to sync directly using shared logic
+    try {
+      const { performVideoSync } = await import('./lib/syncLogic')
+      const syncResult = await performVideoSync(userId, currentAccessToken)
       
-      const newAccessToken = await refreshUserToken(refreshToken)
-      if (newAccessToken) {
-        console.log(`✅ Successfully refreshed token for user ${userId}`)
-        currentAccessToken = newAccessToken
-        
-        // Retry sync with new token
-        syncResponse = await fetch(`${baseUrl}/api/sync-videos`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId,
-            accessToken: currentAccessToken
-          })
-        })
-      } else {
-        result.errors.push(`Failed to refresh expired token for user ${userId}`)
-      }
-    }
-    
-    if (syncResponse.ok) {
-      const syncData = await syncResponse.json()
-      result.channelsSynced = syncData.channelsSynced || 0
-      result.videosSynced = syncData.videosSynced || 0
-      result.errors = syncData.errors || []
+      result.channelsSynced = syncResult.channelsSynced
+      result.videosSynced = syncResult.videosSynced
+      result.errors = syncResult.errors
       
       console.log(`Cron: Successfully synced ${result.videosSynced} videos from ${result.channelsSynced} channels for user ${userId}`)
-    } else {
-      const errorText = await syncResponse.text().catch(() => 'No error text')
-      console.error(`❌ Sync API failed for user ${userId}:`, {
-        status: syncResponse.status,
-        statusText: syncResponse.statusText,
-        error: errorText
-      })
-      throw new Error(`Sync API returned ${syncResponse.status}: ${errorText}`)
+      
+    } catch (syncError) {
+      // If sync failed and we have a refresh token, try to refresh and retry
+      if (refreshToken && refreshToken !== 'placeholder' && refreshToken !== 'created_via_sync_no_refresh_token') {
+        console.log(`Sync failed for user ${userId}, attempting token refresh...`)
+        
+        const newAccessToken = await refreshUserToken(refreshToken)
+        if (newAccessToken) {
+          console.log(`✅ Successfully refreshed token for user ${userId}, retrying sync...`)
+          currentAccessToken = newAccessToken
+          
+          // Retry sync with new token
+          const { performVideoSync } = await import('./lib/syncLogic')
+          const retryResult = await performVideoSync(userId, currentAccessToken)
+          
+          result.channelsSynced = retryResult.channelsSynced
+          result.videosSynced = retryResult.videosSynced
+          result.errors = retryResult.errors
+          
+          console.log(`Cron: Successfully synced ${result.videosSynced} videos after token refresh for user ${userId}`)
+        } else {
+          result.errors.push(`Failed to refresh expired token for user ${userId}`)
+          throw syncError
+        }
+      } else {
+        throw syncError
+      }
     }
     
   } catch (error) {
