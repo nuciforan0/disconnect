@@ -120,6 +120,172 @@ async function refreshUserToken(refreshToken: string): Promise<string | null> {
   }
 }
 
+// Simple direct sync logic for cron job (avoids HTTP calls)
+async function performDirectSync(userId: string, accessToken: string): Promise<SyncResult> {
+  const result: SyncResult = {
+    channelsSynced: 0,
+    videosSynced: 0,
+    errors: []
+  }
+
+  try {
+    console.log(`Starting direct YouTube sync for user ${userId}`)
+    
+    // Calculate exactly 24 hours ago
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const publishedAfter = oneDayAgo.toISOString()
+    
+    // Get user's subscribed channels
+    const allChannelIds: string[] = []
+    let nextPageToken = ''
+    
+    do {
+      const subscriptionsUrl = `https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=50${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`
+      
+      const subsResponse = await fetch(subscriptionsUrl, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json'
+        }
+      })
+      
+      if (!subsResponse.ok) {
+        throw new Error(`Failed to fetch subscriptions: ${subsResponse.status}`)
+      }
+      
+      const subsData = await subsResponse.json()
+      const channels = subsData.items || []
+      
+      channels.forEach((channel: any) => {
+        allChannelIds.push(channel.snippet.resourceId.channelId)
+      })
+      
+      nextPageToken = subsData.nextPageToken || ''
+      
+      if (nextPageToken) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    } while (nextPageToken)
+    
+    console.log(`Found ${allChannelIds.length} subscribed channels`)
+    
+    // Use RSS feeds to get recent videos (simplified version)
+    const allVideos: any[] = []
+    const publishedAfterDate = new Date(publishedAfter)
+    const uniqueChannels = new Set<string>()
+    
+    // Process channels in small batches
+    const batchSize = 5
+    for (let i = 0; i < allChannelIds.length; i += batchSize) {
+      const batch = allChannelIds.slice(i, i + batchSize)
+      
+      for (const channelId of batch) {
+        try {
+          const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
+          const response = await fetch(rssUrl)
+          
+          if (response.ok) {
+            const xmlText = await response.text()
+            const entryMatches = xmlText.match(/<entry>[\s\S]*?<\/entry>/g) || []
+            
+            entryMatches.forEach(entryXml => {
+              const videoIdMatch = entryXml.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)
+              const titleMatch = entryXml.match(/<title>([^<]+)<\/title>/)
+              const publishedMatch = entryXml.match(/<published>([^<]+)<\/published>/)
+              const authorMatch = entryXml.match(/<name>([^<]+)<\/name>/)
+              
+              if (videoIdMatch && titleMatch && publishedMatch) {
+                const publishedAt = new Date(publishedMatch[1])
+                if (publishedAt > publishedAfterDate) {
+                  uniqueChannels.add(channelId)
+                  allVideos.push({
+                    videoId: videoIdMatch[1],
+                    title: titleMatch[1],
+                    channelId,
+                    channelName: authorMatch ? authorMatch[1] : 'Unknown Channel',
+                    publishedAt: publishedMatch[1],
+                    thumbnailUrl: `https://img.youtube.com/vi/${videoIdMatch[1]}/mqdefault.jpg`
+                  })
+                }
+              }
+            })
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch RSS for channel ${channelId}:`, error)
+        }
+      }
+      
+      // Small delay between batches
+      if (i + batchSize < allChannelIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
+    
+    console.log(`Found ${allVideos.length} recent videos from RSS feeds`)
+    
+    // Save to database
+    const supabase = getSupabaseClient()
+    if (supabase && allVideos.length > 0) {
+      try {
+        // Get user from database
+        const { data: user } = await supabase
+          .from('users')
+          .select('*')
+          .eq('google_id', userId)
+          .single()
+        
+        if (user) {
+          // Prepare videos for database
+          const videosToSave = allVideos.map(video => ({
+            user_id: user.id,
+            video_id: video.videoId,
+            channel_id: video.channelId,
+            channel_name: video.channelName,
+            title: video.title,
+            thumbnail_url: video.thumbnailUrl,
+            published_at: video.publishedAt,
+            duration: 'Unknown' // We'll skip duration check for cron to keep it simple
+          }))
+          
+          // Save videos to database
+          const { data: savedVideos } = await supabase
+            .from('videos')
+            .upsert(videosToSave, { 
+              onConflict: 'user_id,video_id',
+              ignoreDuplicates: true 
+            })
+            .select()
+          
+          console.log(`✅ Saved ${savedVideos?.length || 0} videos to database`)
+          
+          // Update user's last sync time
+          await supabase
+            .from('users')
+            .update({ 
+              access_token: accessToken,
+              last_sync: new Date().toISOString() 
+            })
+            .eq('id', user.id)
+        }
+      } catch (error) {
+        console.error('Database save error:', error)
+        result.errors.push(`Database error: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+    
+    result.channelsSynced = uniqueChannels.size
+    result.videosSynced = allVideos.length
+    
+    console.log(`Direct sync completed: ${result.videosSynced} videos from ${result.channelsSynced} channels`)
+    
+  } catch (error) {
+    console.error('Direct sync error:', error)
+    result.errors.push(error instanceof Error ? error.message : 'Unknown error')
+  }
+
+  return result
+}
+
 async function syncUserVideos(userId: string, accessToken: string, refreshToken?: string): Promise<SyncResult> {
   const result: SyncResult = {
     channelsSynced: 0,
@@ -132,30 +298,14 @@ async function syncUserVideos(userId: string, accessToken: string, refreshToken?
     
     let currentAccessToken = accessToken
     
-    // Call sync-videos endpoint directly with a simple HTTP request
-    // This avoids module import issues and reuses existing tested code
+    // Try direct sync first
     try {
-      const syncResponse = await fetch(`https://${process.env.VERCEL_URL}/api/sync-videos`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          accessToken: currentAccessToken
-        })
-      })
+      const syncResult = await performDirectSync(userId, currentAccessToken)
+      result.channelsSynced = syncResult.channelsSynced
+      result.videosSynced = syncResult.videosSynced
+      result.errors = syncResult.errors
       
-      if (syncResponse.ok) {
-        const syncData = await syncResponse.json()
-        result.channelsSynced = syncData.channelsSynced || 0
-        result.videosSynced = syncData.videosSynced || 0
-        result.errors = syncData.errors || []
-        
-        console.log(`Cron: Successfully synced ${result.videosSynced} videos from ${result.channelsSynced} channels for user ${userId}`)
-      } else {
-        throw new Error(`Sync API returned ${syncResponse.status}`)
-      }
+      console.log(`Cron: Successfully synced ${result.videosSynced} videos from ${result.channelsSynced} channels for user ${userId}`)
       
     } catch (syncError) {
       // If sync failed and we have a refresh token, try to refresh and retry
@@ -168,27 +318,12 @@ async function syncUserVideos(userId: string, accessToken: string, refreshToken?
           currentAccessToken = newAccessToken
           
           // Retry sync with new token
-          const retryResponse = await fetch(`https://${process.env.VERCEL_URL}/api/sync-videos`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              userId,
-              accessToken: currentAccessToken
-            })
-          })
+          const retryResult = await performDirectSync(userId, currentAccessToken)
+          result.channelsSynced = retryResult.channelsSynced
+          result.videosSynced = retryResult.videosSynced
+          result.errors = retryResult.errors
           
-          if (retryResponse.ok) {
-            const retryData = await retryResponse.json()
-            result.channelsSynced = retryData.channelsSynced || 0
-            result.videosSynced = retryData.videosSynced || 0
-            result.errors = retryData.errors || []
-            
-            console.log(`Cron: Successfully synced ${result.videosSynced} videos after token refresh for user ${userId}`)
-          } else {
-            throw new Error(`Retry sync API returned ${retryResponse.status}`)
-          }
+          console.log(`Cron: Successfully synced ${result.videosSynced} videos after token refresh for user ${userId}`)
         } else {
           result.errors.push(`Failed to refresh expired token for user ${userId}`)
           throw syncError
