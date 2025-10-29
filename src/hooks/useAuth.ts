@@ -54,7 +54,7 @@ export function useAuth() {
 
     // Listen for refresh token failures
     const handleRefreshFailure = (event: CustomEvent) => {
-      console.log('🚨 Refresh token failed, logging out user')
+      console.log('🚨 Refresh token failed, logging out user:', event.detail?.message || 'Unknown reason')
       logout()
     }
 
