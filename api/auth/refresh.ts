@@ -16,6 +16,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    console.log('🔄 Attempting to refresh token...')
+    
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: {
@@ -30,7 +32,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
 
     if (!tokenResponse.ok) {
-      throw new Error('Failed to refresh token')
+      const errorData = await tokenResponse.json().catch(() => ({}))
+      console.error('❌ Google token refresh failed:', {
+        status: tokenResponse.status,
+        error: errorData
+      })
+      
+      // Provide more specific error messages
+      if (tokenResponse.status === 400 && errorData.error === 'invalid_grant') {
+        throw new Error('Refresh token has expired or been revoked. Please log in again.')
+      }
+      
+      throw new Error(`Failed to refresh token: ${errorData.error || tokenResponse.status}`)
     }
 
     const tokens = await tokenResponse.json()

@@ -65,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Generate a unique session token for PWA persistence
       const sessionToken = Buffer.from(`${userInfo.id}_${Date.now()}_${Math.random()}`).toString('base64')
-      
+
       const userData = {
         google_id: userInfo.id,
         email: userInfo.email,
@@ -79,19 +79,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log('🔍 Checking environment variables...')
         const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
         const serviceKey = process.env.SUPABASE_SERVICE_KEY
-        
+
         console.log('Environment check:', {
           hasSupabaseUrl: !!supabaseUrl,
           hasServiceKey: !!serviceKey,
           supabaseUrlPrefix: supabaseUrl ? supabaseUrl.substring(0, 20) + '...' : 'missing',
           serviceKeyPrefix: serviceKey ? serviceKey.substring(0, 10) + '...' : 'missing'
         })
-        
+
         if (supabaseUrl && serviceKey) {
           const supabase = createClient(supabaseUrl, serviceKey)
-          
+
           console.log(`🔄 Attempting to save user ${userInfo.id} (${userInfo.email}) to database...`)
-          
+
           console.log('User data to save:', {
             google_id: userData.google_id,
             email: userData.email,
@@ -99,17 +99,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             hasRefreshToken: !!userData.refresh_token,
             refreshTokenValue: userData.refresh_token
           })
-          
+
           // Upsert user with real tokens
           const { data: user, error: dbError } = await supabase
             .from('users')
-            .upsert(userData, { 
+            .upsert(userData, {
               onConflict: 'google_id',
-              ignoreDuplicates: false 
+              ignoreDuplicates: false
             })
             .select()
             .single()
-          
+
           if (dbError) {
             console.error('❌ Database upsert error:', {
               message: dbError.message,
@@ -144,7 +144,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
       }
 
-      const authData = {
+      const authData: {
+        user: {
+          id: any;
+          email: any;
+          name: any;
+        };
+        tokens: {
+          accessToken: any;
+          refreshToken: any;
+          expiresIn: any;
+        };
+        sessionToken?: string;
+      } = {
         user: {
           id: userInfo.id,
           email: userInfo.email,
@@ -156,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           expiresIn: tokens.expires_in
         }
       }
-      
+
       // Add session token if database save was successful
       if (userData.session_token) {
         authData.sessionToken = userData.session_token
@@ -167,9 +179,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const cookieOptions = `HttpOnly; Secure; SameSite=Strict; Max-Age=${60 * 60 * 24 * 30}; Path=/`
       const cookies = [
         `auth_user_id=${userInfo.id}; ${cookieOptions}`, // 30 days
-        `auth_session=${Buffer.from(JSON.stringify({userId: userInfo.id, email: userInfo.email})).toString('base64')}; ${cookieOptions}`
+        `auth_session=${Buffer.from(JSON.stringify({ userId: userInfo.id, email: userInfo.email })).toString('base64')}; ${cookieOptions}`
       ]
-      
+
       res.setHeader('Set-Cookie', cookies)
       console.log(`🍪 Setting cookies for user ${userInfo.id}:`, cookies)
 

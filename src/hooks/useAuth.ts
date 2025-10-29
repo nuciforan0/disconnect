@@ -52,7 +52,19 @@ export function useAuth() {
       }
     }
 
+    // Listen for refresh token failures
+    const handleRefreshFailure = (event: CustomEvent) => {
+      console.log('🚨 Refresh token failed, logging out user')
+      logout()
+    }
+
+    window.addEventListener('auth:refresh-failed', handleRefreshFailure as EventListener)
+
     checkAuth()
+
+    return () => {
+      window.removeEventListener('auth:refresh-failed', handleRefreshFailure as EventListener)
+    }
   }, [setUser, setLoading])
 
   const login = async () => {

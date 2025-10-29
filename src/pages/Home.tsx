@@ -5,6 +5,7 @@ import QuotaStatus from '../components/QuotaStatus'
 import { useAuth } from '../hooks/useAuth'
 import { useVideoFeed, useSyncVideos } from '../hooks/useVideos'
 import { authService } from '../services/auth'
+import { apiService } from '../services/api'
 
 export default function Home() {
   const { user } = useAuth()
@@ -36,6 +37,19 @@ export default function Home() {
     }
   }
 
+  const handleDebugTokens = async () => {
+    if (user?.id) {
+      try {
+        const status = await apiService.checkTokenStatus(user.id)
+        console.log('🔍 Token Status:', status)
+        alert(`Token Status:\n\nAccess Token: ${status.tokens.accessToken.valid ? '✅ Valid' : '❌ Invalid'}\nRefresh Token: ${status.tokens.refreshToken.valid ? '✅ Valid' : '❌ Invalid'}\n\nCheck console for details`)
+      } catch (error) {
+        console.error('Debug failed:', error)
+        alert('Debug failed - check console')
+      }
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
@@ -56,7 +70,7 @@ export default function Home() {
               </p>
             </div>
             
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 space-x-2">
               <button
                 onClick={handleSyncVideos}
                 disabled={syncVideosMutation.isPending}
@@ -78,6 +92,13 @@ export default function Home() {
                     Sync Videos
                   </>
                 )}
+              </button>
+              
+              <button
+                onClick={handleDebugTokens}
+                className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                🔍 Debug
               </button>
             </div>
           </div>

@@ -75,10 +75,13 @@ class AuthService {
 
   async refreshAccessToken(): Promise<string | null> {
     if (!this.refreshToken) {
+      console.log('❌ No refresh token available')
       return null
     }
 
     try {
+      console.log('🔄 Attempting to refresh access token...')
+      
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
         headers: {
@@ -90,7 +93,24 @@ class AuthService {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to refresh token')
+        const errorData = await response.json().catch(() => ({}))
+        console.error('❌ Token refresh failed:', {
+          status: response.status,
+          error: errorData
+        })
+        
+        // If refresh token is invalid, clear everything and force re-login
+        if (response.status === 401 || response.status === 400) {
+          console.log('🚨 Refresh token expired/invalid - clearing auth state')
+          this.clearTokensFromStorage()
+          
+          // Dispatch a custom event to notify the app that re-login is needed
+          window.dispatchEvent(new CustomEvent('auth:refresh-failed', {
+            detail: { message: errorData.error || 'Refresh token expired' }
+          }))
+        }
+        
+        throw new Error(errorData.error || 'Failed to refresh token')
       }
 
       const tokens = await response.json()
@@ -101,6 +121,7 @@ class AuthService {
         expiresIn: tokens.expiresIn,
       })
 
+      console.log('✅ Access token refreshed successfully')
       return tokens.accessToken
     } catch (error) {
       console.error('Token refresh failed:', error)
