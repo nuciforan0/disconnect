@@ -158,40 +158,7 @@ class ApiService {
     }
   }
 
-  // Debug token status
-  async checkTokenStatus(userId: string): Promise<{
-    user: {
-      googleId: string;
-      email: string;
-      lastSync: string | null;
-      createdAt: string;
-    };
-    tokens: {
-      accessToken: {
-        valid: boolean;
-        error: string | null;
-        length: number;
-      };
-      refreshToken: {
-        valid: boolean;
-        error: string | null;
-        isPlaceholder: boolean;
-        length: number;
-      };
-    };
-  }> {
-    try {
-      return await this.request('/debug/token-status', {
-        method: 'POST',
-        body: JSON.stringify({ userId })
-      }, {
-        maxRetries: 1
-      })
-    } catch (error) {
-      console.error('Token status check failed:', error)
-      throw error
-    }
-  }
+
 
 
 
